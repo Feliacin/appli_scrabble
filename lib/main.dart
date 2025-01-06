@@ -23,8 +23,12 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     _loadDictionary();
 
-    return const MaterialApp(
-      home: Scaffold(
+    return MaterialApp(
+      theme: ThemeData(
+        primarySwatch: Colors.brown,
+        scaffoldBackgroundColor: Colors.brown[50],
+      ),
+      home: const Scaffold(
         body: Center(
           child: GameScreen(),
         ),
@@ -35,31 +39,93 @@ class MainApp extends StatelessWidget {
 
 class GameScreen extends StatelessWidget {
   static ValueNotifier<List<PlayableWord>> wordSuggestions = ValueNotifier<List<PlayableWord>>([]);
-  
   const GameScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          const Expanded(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(3.0),
-                child: Board(),
-              ),
-            ),
-          ),
-          ValueListenableBuilder<List<PlayableWord>>(
-            valueListenable: wordSuggestions,
-            builder: (context, suggestions, _) {
-              return suggestions.isNotEmpty
-                ? Expanded(child: WordSuggestions())
-                : const Column(children: [Rack(), Keyboard()]);
+      appBar: AppBar(
+        backgroundColor: Colors.brown[300],
+        title: const Text(
+          'Scrabble Assistant',
+          style: TextStyle(fontSize: 18),
+        ),
+        toolbarHeight: 48,
+        elevation: 2,
+        actions: [
+          ValueListenableBuilder<String>(
+            valueListenable: Board.boardType,
+            builder: (context, currentType, _) {
+              return PopupMenuButton<String>(
+                icon: const Icon(Icons.settings, size: 20),
+                tooltip: 'Changer le type de plateau',
+                onSelected: (value) {
+                  Board.boardType.value = value;
+                  Board.reset();
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  PopupMenuItem<String>(
+                    value: 'scrabble',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.check,
+                          color: currentType == 'scrabble' ? Colors.green : Colors.transparent,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Scrabble'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'mywordgame',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.check,
+                          color: currentType == 'mywordgame' ? Colors.green : Colors.transparent,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('7 lettres pour 1 mot'),
+                      ],
+                    ),
+                  ),
+                ],
+              );
             },
           ),
         ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+          child: Column(
+            children: [
+              const Expanded(
+                child: Center(
+                  child: Board(),
+                ),
+              ),
+              ValueListenableBuilder<List<PlayableWord>>(
+                valueListenable: wordSuggestions,
+                builder: (context, suggestions, _) {
+                  return suggestions.isNotEmpty
+                    ? Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(maxHeight: 150),
+                        child: Card(
+                          elevation: 2,
+                          child: WordSuggestions(),
+                        ),
+                      )
+                    : const Column(children: [Rack(), Keyboard()]);
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

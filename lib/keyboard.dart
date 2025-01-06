@@ -15,12 +15,23 @@ class Keyboard extends StatelessWidget {
         Rack.letters.value = newLetters;
       }
     } else if (Board.selectedIndex.value != null) {
-      final row = Board.selectedIndex.value! ~/ Board.boardSize;
-      final col = Board.selectedIndex.value! % Board.boardSize;
+      final index = Board.selectedIndex.value!;
+      final row = index ~/ Board.boardSize;
+      final col = index % Board.boardSize;
+
+      if (letter == ' ') {
+        if (Board.letters.value[row][col] != null) {
+          final newBlanks = List<int>.from(Board.blanks.value);
+          Board.blanks.value.contains(index)
+            ? newBlanks.remove(index)
+            : newBlanks.add(index);
+          Board.blanks.value = newBlanks;
+        }
+        return;
+      }
       
       // Ajouter la lettre
       Board.letters.value[row][col] = letter;
-      //Board.setLetter(row, col, letter);
 
       // Déplacer la sélection
       if (Board.isVertical.value) {
@@ -63,7 +74,7 @@ class Keyboard extends StatelessWidget {
     const letters = [
       ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
       ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
-      ['w', 'x', 'c', 'v', 'b', 'n'],
+      ['w', 'x', 'c', 'v', 'b', 'n', ' '],
     ];
 
     return Container(

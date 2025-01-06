@@ -3,7 +3,7 @@ import 'package:appli_scrabble/board.dart';
 
 class Rack extends StatelessWidget {
   static ValueNotifier<List<String>> letters = ValueNotifier<List<String>>([]);
-  static ValueNotifier<bool> isSelected = ValueNotifier<bool>(false);
+  static ValueNotifier<bool> isSelected = ValueNotifier<bool>(true);
   static const int maxLetters = 7;
 
   const Rack({super.key});
@@ -81,7 +81,7 @@ class Rack extends StatelessWidget {
               const SizedBox(width: 16),
               ElevatedButton(
                 onPressed: () {
-                  Board.findWord(letters.value.join());
+                  Board.findWord(letters.value);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green[600],
