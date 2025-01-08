@@ -13,7 +13,7 @@ class Rack extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -79,16 +79,28 @@ class Rack extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Board.findWord(letters.value);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[600],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              Container(
+                height: 35,
+                width: 35,
+                decoration: BoxDecoration(
+                  color: Colors.teal,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.search, size: 20),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => Board.findWord(letters.value),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Icon(Icons.search, size: 20, color: Colors.white),
+                  ),
+                ),
               ),
             ],
           ),

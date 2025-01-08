@@ -51,6 +51,12 @@ class Board extends StatelessWidget {
     return positions;
   }
 
+  static void write(String letter, int i, int j) {
+    final newLetters = List<List<String?>>.from(letters.value);
+    newLetters[i][j] = letter;
+    Board.letters.value = newLetters;
+  }
+
   static void reset() {
     letters.value = List.generate(boardSize, (_) => List.filled(boardSize, null));
     blanks.value = [];
@@ -105,7 +111,7 @@ class Board extends StatelessWidget {
     if (rack.isEmpty) return;
     List<List<PossibleLetters>> possibleLetters = PossibleLetters.scan(letters.value);
     List<int> connections;
-    var bestWords = BestWords(5);
+    var bestWords = BestWords(10);
     int middle = boardSize ~/ 2;
     if (Board.letters.value[middle][middle] == null) { // Premier mot
       connections = [middle];
@@ -134,10 +140,8 @@ class Board extends StatelessWidget {
   }
 
   static void findWordOnLine(List<String> rack, int index, bool isRow, List<List<PossibleLetters>> possibleLettersTable, List<int> connections,  BestWords bestWords) {
-    int position, points, extra, factor;
-    bool ok;
-    List<List<PrecomputedPlacement>> precomputedPlacements =  // Contraintes de placements selon la longueur du mot
-      List.generate(boardSize + 1, (_) => <PrecomputedPlacement>[]); // Indices 0 et 1 inutilisés
+    int position, points, extra, factor, playedLettersCount;
+    bool isBlank;
     List<String?> lettersLine;
     List<String> specialPositionsLine;
     List<PossibleLetters> possibleLettersLine;
@@ -156,6 +160,7 @@ class Board extends StatelessWidget {
       blanksPlaced = blanks.value.where((i) => i % boardSize == index).map((i) => i ~/ boardSize).toList();
     }
 
+    // Pré-calcul des positions possibles
     for (int wordLength = 2; wordLength <= Board.boardSize; wordLength++) {
       position = 0; // Emplacement du début du mot
       for (int k = 0; k < connections.length; k++) {
@@ -169,69 +174,22 @@ class Board extends StatelessWidget {
             (position + wordLength == Board.boardSize || lettersLine[position + wordLength] == null)) {
             possiblePositions[wordLength].add(position);
           }
-      //     var infoPlacement = PrecomputedPlacement();
-      //     infoPlacement.positionWord = position;
-      //     ok = true;
-      //     for (int l = 0; l < wordLength; l++) {
-      //       if (lettersLine[position + l] != null) { // Lettre imposée
-      //         infoPlacement.forcedChar.add(lettersLine[position + l]!);
-      //         infoPlacement.forcedCharPositions.add(l);
-      //       } else {
-      //         var possibleLetters = possibleLettersLine[position + l].get(!isRow); // possibilités dans le sens contraire d'écriture
-      //         if (possibleLetters != null) {
-      //           if (possibleLetters.isEmpty) {
-      //               ok = false; // Aucune possibilité de mot
-      //               break;
-      //           } else {
-      //               infoPlacement.limitedChar.add(possibleLetters);
-      //               infoPlacement.limitedCharPositions.add(l);
-      //           }
-      //         }
-      //       }
-      //     }
-      //     if (ok) {
-      //       infoPlacement.letterCount = rackLetterCount.copy();
-      //       for (int l = 0; l < infoPlacement.forcedChar.length; l++) {
-      //           infoPlacement.letterCount!.addLetters(infoPlacement.forcedChar[l]);
-      //       }
-      //       precomputedPlacements[wordLength].add(infoPlacement);
-      //     }
         }
       }
     }
     for (int wordLength=2; wordLength <= Board.boardSize; wordLength++) {
       for (var position in possiblePositions[wordLength]) {
-        for (String word in MainApp.dictionary.getPossibleWords(rack, wordLength, lettersLine.sublist(position, position+wordLength), possibleLettersLine.sublist(position, position+wordLength).map((possibleLetters) => possibleLetters.get(!isRow)).toList())) {
-         // var wordLetterCount = LetterCount(word);
-      //   for (String word in MainApp.dictionary.wordsByLength[wordLength]) {
-      //     LetterCount wordLetterCount = MainApp.dictionary.letterCounts[word]!;
-      //     // Plusieurs filtres préalables
-      //     // (1/3) Il faut qu'on dispose des lettres nécessaires (ou de blancs)
-      //     if (!infoPlacement.letterCount!.accepts(wordLetterCount)) continue;
-
-      //     // (2/3) On peut placer ici un mot de n lettres, mais il faut que les lettres forcées correspondent
-      //     ok = true;
-      //     for (int k=0; k < infoPlacement.forcedChar.length; k++) {
-      //       if (infoPlacement.forcedChar[k] != word[infoPlacement.forcedCharPositions[k]]) {
-      //         ok = false;
-      //         break;
-      //       }
-      //     }
-      //     if (!ok) continue;
-
-      //     // (3/3) Il faut enfin que les lettres placées sur les liaisons entrent dans les possibilités
-      //     ok = true;
-      //     for (int k = 0; k < infoPlacement.limitedChar.length; k++) {
-      //       if (!infoPlacement.limitedChar[k].contains(word[infoPlacement.limitedCharPositions[k]])) {
-      //           ok = false;
-      //           break;
-      //       }
-      //     }
-      //     if (!ok) continue;
-
-          // Le mot est jouable, calcul des points
+        for (PlayableWord playableWord in MainApp.dictionary.getPossibleWords(
+            rack,
+            wordLength,
+            lettersLine.sublist(position, position + wordLength),
+            possibleLettersLine.sublist(position, position + wordLength).map((possibleLetters) => possibleLetters.get(!isRow)).toList())
+            ) {
+          // Calcul des points
           points = 0;
           extra = 0;
+          playedLettersCount = 0;
+          String word = playableWord.word;
           for (int k = 0; k < word.length; k++) {
             if(lettersLine[position + k] != null) {
               if (!blanksPlaced.contains(position + k)) {
@@ -239,29 +197,17 @@ class Board extends StatelessWidget {
               }
               continue;
             }
+            playedLettersCount++;
+            isBlank = playableWord.blankPositions.contains(k);
             if (possibleLettersLine[position + k].get(!isRow) != null) {
               int index = possibleLettersLine[position + k].get(!isRow)!.indexOf(word[k]);
               extra += possibleLettersLine[position + k].getPoints(!isRow)![index];
+              factor = {'TL': 3, 'DL': 2, 'TW': 3, 'DW': 2}[specialPositionsLine[position + k]] ?? 1;
+              extra -= isBlank ? factor * calculatePoints(word[k]) : 0;
             }
             factor = {'TL': 3, 'DL': 2}[specialPositionsLine[position + k]] ?? 1;
-            points += factor * calculatePoints(word[k]);
+            points += !isBlank ? factor * calculatePoints(word[k]) : 0;
           }
-
-          List<int> blankPositions = [];
-          // for (String letter in infoPlacement.letterCount!.getMissingLetters(wordLetterCount)) {
-          //   // Détermination de la meilleure position pour le blanc
-          //   var possibilities = List.generate(word.length, (i) => i).where((i) => word[i] == letter).toList();
-          //   possibilities.removeWhere((pos) => blankPositions.contains(pos)); // On ne peut pas placer deux blancs au même endroit
-          //   blankPositions.add(minimiseBlankLoss(possibilities, position, specialPositionsLine, possibleLettersLine, isRow));
-          //   // Retrait des points comptés pour le blanc
-          //   factor = {'TL': 3, 'DL': 2}[specialPositionsLine[position + blankPositions.last]] ?? 1;
-          //   points -= factor * calculatePoints(letter);
-          //   if (possibleLettersLine[position + blankPositions.last].get(!isRow) != null) {
-          //     factor = {'TW': 3, 'DW': 2, 'TL': 3, 'DL': 2}[specialPositionsLine[position + blankPositions.last]] ?? 1;
-          //     extra -= factor * calculatePoints(letter);
-          //   }
-          // }
-
           for (int k=0; k<word.length; k++) {
             if (lettersLine[position + k] != null) continue;
             if (specialPositionsLine[position + k] == 'DW') {
@@ -271,16 +217,17 @@ class Board extends StatelessWidget {
             }
           }
           points += extra;
-          // if (infoPlacement.letterCount!.size == wordLetterCount.size && rackLetterCount.size == Rack.maxLetters) {
-          //   points += boardType.value == 'scrabble' ? 50 : 49; // Bonus pour avoir utilisé toutes les lettres
-          // }
+          if (playedLettersCount == Rack.maxLetters) {
+            points += boardType.value == 'scrabble' ? 50 : 49; // Bonus pour avoir utilisé toutes les lettres
+          }
 
+          // Comparaison avec les meilleurs mots
           if (bestWords.accepts(points)) {
-            if (isRow) {
-              bestWords.add(PlayableWord(word, index, position, true, points, blankPositions));
-            } else {
-              bestWords.add(PlayableWord(word, position, index, false, points, blankPositions));
-            }
+            playableWord.points = points;
+            isRow
+              ? playableWord.setPosition(index, position, true)
+              : playableWord.setPosition(position, index, false);
+            bestWords.add(playableWord);
           }
         }
       }

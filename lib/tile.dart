@@ -12,8 +12,12 @@ class Tile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Board.selectedIndex.value = index;
-        Rack.isSelected.value = false;
+        if (Board.selectedIndex.value == index) { // Changer la direction
+          Board.isVertical.value = !Board.isVertical.value;
+        } else { // Sélectionner la case
+          Board.selectedIndex.value = index;
+          Rack.isSelected.value = false;
+        }
       },
       child: ValueListenableBuilder<int?>(
         valueListenable: Board.selectedIndex,
@@ -21,64 +25,68 @@ class Tile extends StatelessWidget {
           return ValueListenableBuilder<List<List<String?>>>(
             valueListenable: Board.letters,
             builder: (context, letters, _) {
-              bool isSelected = selected == index;
-              int row = index ~/ Board.boardSize;
-              int col = index % Board.boardSize;
-              String? letter = letters[row][col];
-              return ValueListenableBuilder<List<int>>(
-                valueListenable: Board.blanks,
-                builder: (context, blanks, _) {
-                  final isBlank = blanks.contains(index);
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: letter != null 
-                          ? (isBlank ? Colors.pink[50] : Colors.amber[100])
-                          : (isSelected
-                              ? Colors.yellow[200]
-                              : Board.specialColors[propriete] ?? Colors.white),
+              final row = index ~/ Board.boardSize;
+              final col = index % Board.boardSize;
+              final letter = letters[row][col];
+              
+              return ValueListenableBuilder<bool>(
+                valueListenable: Board.isVertical,
+                builder: (context, isVertical, _) {
+                  // Déterminer le type de case (sélectionnée, direction, normale)
+                  final isSelected = selected == index;
+                  final isDirectionIndicator = selected != null &&
+                    ((isVertical && col == selected % Board.boardSize && row == (selected ~/ Board.boardSize) + 1) ||
+                     (!isVertical && row == selected ~/ Board.boardSize && col == (selected % Board.boardSize) + 1));
+
+                  // Déterminer la décoration de la case
+                  final baseColor = letter != null 
+                    ? (Board.blanks.value.contains(index) ? Colors.pink[50]! : Colors.amber[100]!)
+                    : (Board.specialColors[propriete] ?? Colors.white);
+
+                  BoxDecoration decoration;
+                  if (isSelected) {
+                    decoration = BoxDecoration(
+                      color: Colors.limeAccent,
                       borderRadius: BorderRadius.circular(3),
-                      border: isSelected
-                          ? Border.all(color: Colors.orange, width: 2)
-                          : Border.all(color: Colors.brown[200]!, width: 1),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: Colors.orange.withOpacity(0.3),
-                                spreadRadius: 1,
-                                blurRadius: 2,
-                              )
-                            ]
-                          : (letter != null 
-                              ? [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    spreadRadius: 0,
-                                    blurRadius: 2,
-                                    offset: const Offset(0, 1),
-                                  )
-                                ]
-                              : null),
-                    ),
+                    );
+                  } else if (isDirectionIndicator) {
+                    decoration = BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: isVertical ? Alignment.topCenter : Alignment.centerLeft,
+                        end: isVertical ? Alignment.bottomCenter : Alignment.centerRight,
+                        colors: [Colors.limeAccent, baseColor],
+                      ),
+                      borderRadius: BorderRadius.circular(3),
+                    );
+                  } else {
+                    decoration = BoxDecoration(
+                      color: baseColor,
+                      borderRadius: BorderRadius.circular(3),
+                    );
+                  }
+
+                  return Container(
+                    decoration: decoration,
                     child: Center(
                       child: letter != null
-                          ? Text(
-                              letter.toUpperCase(),
-                              style: TextStyle(
-                                color: Colors.brown,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            )
-                          : Text(
-                              propriete,
-                              style: TextStyle(
-                                fontSize: 8,
-                                color: Colors.brown[600],
-                              ),
+                        ? Text(
+                            letter.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.brown,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
                             ),
+                          )
+                        : Text(
+                            propriete,
+                            style: TextStyle(
+                              fontSize: 8,
+                              color: Colors.brown[600],
+                            ),
+                          ),
                     ),
                   );
-                }
+                },
               );
             },
           );

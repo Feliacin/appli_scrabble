@@ -118,13 +118,13 @@ class PossibleLetters {
 
 class PlayableWord {
   String word;
+  List<int> blankPositions;
   int row;
   int col;
   bool isHorizontal;
   int points;
-  List<int> blankPositions;
 
-  PlayableWord(this.word, this.row, this.col, this.isHorizontal, this.points, this.blankPositions);
+  PlayableWord(this.word,  this.blankPositions, {this.row = -1, this.col = -1, this.isHorizontal = true, this.points = 0});
 
   void place() {
     List<List<String?>> letters = List.from(Board.letters.value);
@@ -142,6 +142,12 @@ class PlayableWord {
     // Notifie que la valeur a changé
     Board.letters.value = letters;
     Board.blanks.value = blanks;
+  }
+
+  void setPosition(int row, int col, bool isHorizontal) {
+    this.row = row;
+    this.col = col;
+    this.isHorizontal = isHorizontal;
   }
 }
 
@@ -168,72 +174,6 @@ class BestWords {
       words.removeLast();
     }    
   }
-}
-
-class LetterCount {
-  List<int> letterTable = List<int>.filled(26, 0);
-  int blankCount = 0;
-  int size = 0;
-
-  LetterCount([String letters = '']) {
-    addLetters(letters);
-  }
-
-  LetterCount copy() {
-    LetterCount copy = LetterCount();
-    copy.letterTable = List<int>.from(letterTable);
-    copy.blankCount = blankCount;
-    copy.size = size;
-    return copy;
-  }
-
-  void addLetters(String letters) {
-    letters = letters;
-    for (int i = 0; i < letters.length; i++) {
-      int charCode = letters.codeUnitAt(i);
-      if (charCode >= 'a'.codeUnitAt(0) && charCode <= 'z'.codeUnitAt(0)) {
-        letterTable[charCode - 'a'.codeUnitAt(0)]++;
-      } else {
-        blankCount++;
-      }
-      size ++;
-    }
-  }
-
-  bool accepts(LetterCount other) {
-    int remainingBlanks = blankCount;
-    for (int i = 0; i < 26; i++) {
-      int diff = letterTable[i] - other.letterTable[i];
-      while (diff < 0) {
-        if (remainingBlanks == 0) return false;
-        remainingBlanks--;
-        diff++;
-      }
-    }
-    return true;
-  }
-
-  List<String> getMissingLetters(LetterCount other) {
-    List<String> difference = [];
-    for (int i = 0; i < 26; i++) {
-      int diff = other.letterTable[i] - letterTable[i];
-      while (diff > 0) {
-        difference.add(String.fromCharCode('a'.codeUnitAt(0) + i));
-        diff--;
-      }
-    }
-    return difference;
-  }
-}
-
-// Caractéristiques des emplacements possibles des mots d'une certaine longueur
-class PrecomputedPlacement {
-  int positionWord = 0;
-  List<String> forcedChar = [];
-  List<int> forcedCharPositions = [];  // Indice par rapport au début du mot
-  List<List<String>> limitedChar = [];
-  List<int> limitedCharPositions = [];  // Indice par rapport au début du mot
-  LetterCount? letterCount;
 }
 
 Map<String, int> letterPoints() => Board.boardType.value == 'scrabble' 
@@ -271,56 +211,8 @@ List<T> extractColumn<T>(List<List<T>> table, int columnIndex) {
   return table.map((row) => row[columnIndex]).toList();
 }
 
-int minimiseBlankLoss (List<int> blankPositions, int begining, List<String> specialPositions, List<PossibleLetters> possibleLetters, bool isHorizontal) {
-  int blankLoss (int position) {
-    int loss = {
-      'TL': 2,
-      'DL': 1,
-    }[specialPositions[begining + position]] ?? 0;
-    if (possibleLetters[begining + position].get(!isHorizontal) != null) {
-      loss += {
-        'TW': 3,
-        'DW': 2,
-        'TL': 3,
-        'DL': 2,
-      }[specialPositions[begining + position]] ?? 1;
-    }
-    return loss;
-  }
-  return blankPositions.reduce((min, element) => blankLoss(element) < blankLoss(min) ? element : min);
-}
-
-// class Dictionary {
-//   final List<Set<String>> wordsByLength = [];
-//   final Map<String, LetterCount> letterCounts = {};
-
-//   Future<void> load(String filePath) async {
-//     try {
-//       final String content = await rootBundle.loadString(filePath);
-//       final List<String> lines = content.split('\n');
-
-//       wordsByLength.addAll(List.generate(Board.boardSize + 1, (_) => {}));
-      
-//       for (String word in lines) {
-//         word = word.trim();
-//         if (word.isEmpty) continue;
-//         wordsByLength[word.length].add(word);
-//         letterCounts[word] = LetterCount(word);
-//       }
-//       print('Dictionary loaded');
-//     } catch (e) {
-//       throw Exception('Error loading dictionary: $e');
-//     }
-//   }
-  
-//   bool exists(String word) => wordsByLength[word.length].contains(word);
-// }
-
-
-
 class TrieNode {
   Map<String, TrieNode> children = {};
-  bool isEndOfWord = false;
 }
 
 class Dictionary {
@@ -341,7 +233,6 @@ class Dictionary {
         // Ajouter le mot dans le Trie correspondant à sa longueur
         _insertWord(word);
       }
-      print('Dictionary loaded');
     } catch (e) {
       throw Exception('Error loading dictionary: $e');
     }
@@ -354,7 +245,6 @@ class Dictionary {
       current.children.putIfAbsent(letter, () => TrieNode());
       current = current.children[letter]!;
     }
-    current.isEndOfWord = true;
   }
   
   bool exists(String word) {
@@ -364,25 +254,39 @@ class Dictionary {
       current = current?.children[letter];
       if (current == null) return false;
     }
-    return current!.isEndOfWord;
+    return true;
   }
 
   // Trouve tous les mots possibles d'une longueur donnée avec les lettres disponibles
-  Set<String> getPossibleWords(
+  Set<PlayableWord> getPossibleWords(
     List<String> rack,
     int length,
     List<String?> placedLetters,
     List<List<String>?> possibleLetters
   ) {
-    Set<String> words = {};
+    Set<PlayableWord> words = {};
+    List<String> rackLetters = [];
+    int blankCount = 0;
+    
+    // Séparer les blancs des lettres normales
+    for (String letter in rack) {
+      if (letter == ' ' || letter == '*') {
+        blankCount++;
+      } else {
+        rackLetters.add(letter);
+      }
+    }
+    
     _getWordsWithPrefix(
       _rootsByLength[length],
-      rack.toList(), // On fait une copie pour ne pas modifier le rack original
+      rackLetters,
+      blankCount,
       length,
       "",
       placedLetters,
       possibleLetters,
-      words
+      words,
+      []  // Liste pour suivre les positions des blancs
     );
     return words;
   }
@@ -390,69 +294,86 @@ class Dictionary {
   void _getWordsWithPrefix(
     TrieNode node,
     List<String> remainingLetters,
+    int remainingBlanks,
     int targetLength,
     String prefix,
     List<String?> placedLetters,
     List<List<String>?> possibleLetters,
-    Set<String> results
+    Set<PlayableWord> results,
+    List<int> blankPositions
   ) {
-    // Si on a atteint la longueur cible et que c'est un mot valide
     if (prefix.length == targetLength) {
-      if (node.isEndOfWord) {
-        results.add(prefix);
-      }
+      results.add(PlayableWord(prefix, blankPositions));
       return;
     }
 
-    // Position actuelle dans la ligne
     int position = prefix.length;
     
-    // Si on a une lettre fixe à cette position
+    // Si une lettre est déjà placée à cette position
     if (placedLetters[position] != null) {
       TrieNode? nextNode = node.children[placedLetters[position]!];
       if (nextNode != null) {
         _getWordsWithPrefix(
           nextNode,
           remainingLetters,
+          remainingBlanks,
           targetLength,
           prefix + placedLetters[position]!,
           placedLetters,
           possibleLetters,
-          results
+          results,
+          blankPositions
         );
       }
       return;
     }
 
-    // Pour chaque lettre possible à cette position
+    // Essayer avec les lettres du rack
     for (int i = 0; i < remainingLetters.length; i++) {
       String letter = remainingLetters[i];
       
-      // Vérifier si la lettre est autorisée à cette position
       if (possibleLetters[position] != null && !possibleLetters[position]!.contains(letter)) {
         continue;
       }
       
       if (node.children.containsKey(letter)) {
-        // Retirer la lettre du rack et continuer récursivement
         remainingLetters.removeAt(i);
         _getWordsWithPrefix(
           node.children[letter]!,
           remainingLetters,
+          remainingBlanks,
           targetLength,
           prefix + letter,
           placedLetters,
           possibleLetters,
-          results
+          results,
+          blankPositions
         );
-        // Remettre la lettre dans le rack pour la prochaine itération
         remainingLetters.insert(i, letter);
+      }
+    }
+
+    // Essayer avec un blanc si disponible
+    if (remainingBlanks > 0) {
+      // Tester toutes les lettres possibles pour le blanc
+      for (String letter in node.children.keys) {
+        if (possibleLetters[position] != null && !possibleLetters[position]!.contains(letter)) {
+          continue;
+        }
+        
+        List<int> newBlankPositions = List.from(blankPositions)..add(position);
+        _getWordsWithPrefix(
+          node.children[letter]!,
+          remainingLetters,
+          remainingBlanks - 1,
+          targetLength,
+          prefix + letter,
+          placedLetters,
+          possibleLetters,
+          results,
+          newBlankPositions
+        );
       }
     }
   }
 }
-
-// Pour chaque longueur de mot, la classe contient un node racine, dont le champs children contient des node pour chaque première lettre possible.
-// Ces nodes secondaires contiennent des enfants pour chaque seconde lettre possible à partir de cette lettre de départ.
-// Ainsi de suite jusqu'à la fin du mot de longueur fixée d'avance.
-// Il faut une fonction récursive comme ça : getWordsWithPrefix(rack, length, prefix, lettersLine, possibleLettersLine)

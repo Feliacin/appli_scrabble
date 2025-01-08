@@ -31,17 +31,13 @@ class Keyboard extends StatelessWidget {
       }
       
       // Ajouter la lettre
-      Board.letters.value[row][col] = letter;
+      Board.write(letter, row, col);
 
       // Déplacer la sélection
-      if (Board.isVertical.value) {
-        if (row < Board.boardSize - 1) {
-          Board.selectedIndex.value = (row + 1) * Board.boardSize + col;
-        }
-      } else {
-        if (col < Board.boardSize - 1) {
-          Board.selectedIndex.value = row * Board.boardSize + (col + 1);
-        }
+      if (Board.isVertical.value && row < Board.boardSize - 1) {
+        Board.selectedIndex.value = (row + 1) * Board.boardSize + col;
+      } else if (!Board.isVertical.value && col < Board.boardSize - 1) {
+        Board.selectedIndex.value = row * Board.boardSize + (col + 1);
       }
     }
   }
@@ -52,11 +48,17 @@ class Keyboard extends StatelessWidget {
       newLetters.removeLast();
       Rack.letters.value = newLetters;
     } else if (Board.selectedIndex.value != null) {
-      final row = Board.selectedIndex.value! ~/ Board.boardSize;
-      final col = Board.selectedIndex.value! % Board.boardSize;
+      final index = Board.selectedIndex.value!;
+      final row = index ~/ Board.boardSize;
+      final col = index % Board.boardSize;
       
       // Supprimer la lettre de la case actuelle
       Board.letters.value[row][col] = null;
+      if (Board.blanks.value.contains(index)) {
+        final newBlanks = List<int>.from(Board.blanks.value);
+        newBlanks.remove(index);
+        Board.blanks.value = newBlanks;
+      }
 
       // Déplacer la sélection
       if (Board.isVertical.value && row > 0) {
@@ -74,12 +76,10 @@ class Keyboard extends StatelessWidget {
     const letters = [
       ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
       ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
-      ['w', 'x', 'c', 'v', 'b', 'n', ' '],
+      [' ', 'w', 'x', 'c', 'v', 'b', 'n'],
     ];
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
-      //color: Colors.brown[300],
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -90,25 +90,6 @@ class Keyboard extends StatelessWidget {
             return Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Flèche à gauche pour la dernière ligne
-                if (idx == 2) 
-                  ValueListenableBuilder<bool>(
-                    valueListenable: Board.isVertical,
-                    builder: (context, isVertical, _) {
-                      return IconButton(
-                        onPressed: () {
-                          Board.isVertical.value = !Board.isVertical.value;
-                        },
-                        icon: Icon(
-                          isVertical ? Icons.arrow_downward : Icons.arrow_forward,
-                          color: Colors.blue,
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        constraints: const BoxConstraints(),
-                      );
-                    },
-                  ),
-                
                 // Lettres
                 ...row.map((letter) => Padding(
                   padding: const EdgeInsets.all(1.0),
@@ -126,14 +107,19 @@ class Keyboard extends StatelessWidget {
                   ),
                 )),
                 
-                // Retour arrière à droite pour la dernière ligne
+                // Retour arrière uniquement pour la dernière ligne
                 if (idx == 2)
-                  IconButton(
-                    onPressed: _handleBackspace,
-                    icon: const Icon(Icons.backspace, color: Colors.red),
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    constraints: const BoxConstraints(),
-                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(1.0),
+                    child: SizedBox(
+                      width: 32,
+                      height: 35,
+                      child: IconButton(
+                        onPressed: _handleBackspace,
+                        icon: const Icon(Icons.backspace, color: Colors.red),
+                      ),
+                    ),
+                  )
               ],
             );
           }),

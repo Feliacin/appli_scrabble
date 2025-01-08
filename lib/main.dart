@@ -100,7 +100,7 @@ class GameScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+          padding: const EdgeInsets.all(4.0),
           child: Column(
             children: [
               const Expanded(
@@ -114,11 +114,9 @@ class GameScreen extends StatelessWidget {
                   return suggestions.isNotEmpty
                     ? Container(
                         width: double.infinity,
-                        constraints: const BoxConstraints(maxHeight: 150),
-                        child: Card(
-                          elevation: 2,
-                          child: WordSuggestions(),
-                        ),
+                        constraints: const BoxConstraints(maxHeight: 160),
+                        margin: const EdgeInsets.only(top: 4.0),
+                        child: WordSuggestions(),
                       )
                     : const Column(children: [Rack(), Keyboard()]);
                 },
