@@ -9,9 +9,10 @@ class Keyboard extends StatelessWidget {
 
   void _handleLetterPress(String letter) {
     if (Rack.isSelected.value) {
-      if (Rack.letters.value.length < Rack.maxLetters) {
-        final newLetters = List<String>.from(Rack.letters.value);
-        newLetters.add(letter);
+      int idx = Rack.letters.value.indexOf(null);
+      if (idx < Rack.maxLetters) { // la 8e est forcément null
+        final newLetters = List<String?>.from(Rack.letters.value);
+        newLetters[idx] = letter;
         Rack.letters.value = newLetters;
       }
     } else if (Board.selectedIndex.value != null) {
@@ -43,10 +44,13 @@ class Keyboard extends StatelessWidget {
   }
 
   void _handleBackspace() {
-    if (Rack.isSelected.value && Rack.letters.value.isNotEmpty) {
-      final newLetters = List<String>.from(Rack.letters.value);
-      newLetters.removeLast();
-      Rack.letters.value = newLetters;
+    if (Rack.isSelected.value) {
+      int idx = Rack.letters.value.indexOf(null);
+      if (idx != 0) {
+        final newLetters = List<String?>.from(Rack.letters.value);
+        newLetters[idx - 1] = null;
+        Rack.letters.value = newLetters;
+      }
     } else if (Board.selectedIndex.value != null) {
       final index = Board.selectedIndex.value!;
       final row = index ~/ Board.boardSize;

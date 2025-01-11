@@ -39,6 +39,8 @@ class MainApp extends StatelessWidget {
 
 class GameScreen extends StatelessWidget {
   static ValueNotifier<List<PlayableWord>> wordSuggestions = ValueNotifier<List<PlayableWord>>([]);
+  static ValueNotifier<bool> isGameMode = ValueNotifier<bool>(false);
+
   const GameScreen({super.key});
 
   @override
@@ -53,6 +55,28 @@ class GameScreen extends StatelessWidget {
         toolbarHeight: 48,
         elevation: 2,
         actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: isGameMode,
+            builder: (context, isGame, _) {
+              return IconButton(
+                icon: Icon(isGame ? Icons.sports_esports : Icons.search),
+                tooltip: isGame ? 'Mode jeu' : 'Mode recherche',
+                onPressed: () {
+                  isGameMode.value = !isGameMode.value;
+                  // Réinitialiser l'état quand on change de mode
+                  Board.selectedIndex.value = null;
+                  Rack.isSelected.value = true;
+                  if(!isGameMode.value) {
+                    final List<String?> newLetters = Rack.letters.value.where((letter) => letter != null).toList();
+                    while (newLetters.length < Rack.maxLetters+1) {
+                      newLetters.add(null);
+                    }
+                    Rack.letters.value = newLetters;
+                  }
+                },
+              );
+            },
+          ),
           ValueListenableBuilder<String>(
             valueListenable: Board.boardType,
             builder: (context, currentType, _) {
