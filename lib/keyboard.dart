@@ -1,134 +1,127 @@
-// keyboard.dart
-import 'package:flutter/material.dart';
 import 'package:appli_scrabble/board.dart';
 import 'package:appli_scrabble/rack.dart';
-
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class Keyboard extends StatelessWidget {
   const Keyboard({super.key});
 
-  void _handleLetterPress(String letter) {
-    if (Rack.isSelected.value) {
-      int idx = Rack.letters.value.indexOf(null);
-      if (idx < Rack.maxLetters) { // la 8e est forcément null
-        final newLetters = List<String?>.from(Rack.letters.value);
-        newLetters[idx] = letter;
-        Rack.letters.value = newLetters;
-      }
-    } else if (Board.selectedIndex.value != null) {
-      final index = Board.selectedIndex.value!;
-      final row = index ~/ Board.boardSize;
-      final col = index % Board.boardSize;
+  void _handleLetterPress(BuildContext context, String letter) {
+    final rackState = context.read<RackState>();
+    final boardState = context.read<BoardState>();
+    
+    if (rackState.isSelected) {
+      rackState.addLetter(letter);
+    } else if (boardState.selectedIndex != null) {
+      final index = boardState.selectedIndex!;
+      final row = index ~/ BoardState.boardSize;
+      final col = index % BoardState.boardSize;
 
       if (letter == ' ') {
-        if (Board.letters.value[row][col] != null) {
-          final newBlanks = List<int>.from(Board.blanks.value);
-          Board.blanks.value.contains(index)
-            ? newBlanks.remove(index)
-            : newBlanks.add(index);
-          Board.blanks.value = newBlanks;
+        if (boardState.letters[row][col] != null) {
+          boardState.toggleBlank(index);
         }
         return;
       }
       
       // Ajouter la lettre
-      Board.write(letter, row, col);
+      boardState.writeLetter(letter, row, col);
 
       // Déplacer la sélection
-      if (Board.isVertical.value && row < Board.boardSize - 1) {
-        Board.selectedIndex.value = (row + 1) * Board.boardSize + col;
-      } else if (!Board.isVertical.value && col < Board.boardSize - 1) {
-        Board.selectedIndex.value = row * Board.boardSize + (col + 1);
+      if (boardState.isVertical && row < BoardState.boardSize - 1) {
+        boardState.setSelectedIndex((row + 1) * BoardState.boardSize + col);
+      } else if (!boardState.isVertical && col < BoardState.boardSize - 1) {
+        boardState.setSelectedIndex(row * BoardState.boardSize + (col + 1));
       }
     }
   }
 
-  void _handleBackspace() {
-    if (Rack.isSelected.value) {
-      int idx = Rack.letters.value.indexOf(null);
-      if (idx != 0) {
-        final newLetters = List<String?>.from(Rack.letters.value);
-        newLetters[idx - 1] = null;
-        Rack.letters.value = newLetters;
+  void _handleBackspace(BuildContext context) {
+    final rackState = context.read<RackState>();
+    final boardState = context.read<BoardState>();
+    
+    if (rackState.isSelected) {
+      if (rackState.letters.isNotEmpty) {
+        rackState.removeLetter(rackState.letters.length - 1);
       }
-    } else if (Board.selectedIndex.value != null) {
-      final index = Board.selectedIndex.value!;
-      final row = index ~/ Board.boardSize;
-      final col = index % Board.boardSize;
+    } else if (boardState.selectedIndex != null) {
+      final index = boardState.selectedIndex!;
+      final row = index ~/ BoardState.boardSize;
+      final col = index % BoardState.boardSize;
       
       // Supprimer la lettre de la case actuelle
-      Board.letters.value[row][col] = null;
-      if (Board.blanks.value.contains(index)) {
-        final newBlanks = List<int>.from(Board.blanks.value);
-        newBlanks.remove(index);
-        Board.blanks.value = newBlanks;
-      }
+      boardState.removeLetter(row, col);
 
       // Déplacer la sélection
-      if (Board.isVertical.value && row > 0) {
-        Board.selectedIndex.value = (row - 1) * Board.boardSize + col;
-      } else {
-        if (col > 0) {
-        Board.selectedIndex.value = row * Board.boardSize + (col - 1);
-        }
+      if (boardState.isVertical && row > 0) {
+        boardState.setSelectedIndex((row - 1) * BoardState.boardSize + col);
+      } else if (col > 0) {
+        boardState.setSelectedIndex(row * BoardState.boardSize + (col - 1));
       }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    const letters = [
-      ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-      ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
-      [' ', 'w', 'x', 'c', 'v', 'b', 'n'],
-    ];
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...letters.asMap().entries.map((entry) {
-            int idx = entry.key;
-            List<String> row = entry.value;
-            
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Lettres
-                ...row.map((letter) => Padding(
-                  padding: const EdgeInsets.all(1.0),
-                  child: SizedBox(
-                    width: 32,
-                    height: 35,
-                    child: ElevatedButton(
-                      onPressed: () => _handleLetterPress(letter),
-                      style: ElevatedButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        backgroundColor: Colors.white,
-                      ),
-                      child: Text(letter.toUpperCase()),
-                    ),
-                  ),
-                )),
-                
-                // Retour arrière uniquement pour la dernière ligne
-                if (idx == 2)
-                  Padding(
+Widget build(BuildContext context) {
+  const letters = [
+    ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+    ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
+    [' ', 'w', 'x', 'c', 'v', 'b', 'n'],
+  ];
+  
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      // On prend la largeur disponible et on la divise par 10 (nombre max de touches par ligne)
+      final keySize = (constraints.maxWidth - 20) / 10; // 20 pour le padding
+      final buttonSize = keySize - 2; // 2 pour le padding entre les touches
+      
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...letters.asMap().entries.map((entry) {
+              int idx = entry.key;
+              List<String> row = entry.value;
+              
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ...row.map((letter) => Padding(
                     padding: const EdgeInsets.all(1.0),
                     child: SizedBox(
-                      width: 32,
-                      height: 35,
-                      child: IconButton(
-                        onPressed: _handleBackspace,
-                        icon: const Icon(Icons.backspace, color: Colors.red),
+                      width: buttonSize,
+                      height: buttonSize,
+                      child: ElevatedButton(
+                        onPressed: () => _handleLetterPress(context, letter),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          backgroundColor: Colors.white,
+                        ),
+                        child: Text(letter.toUpperCase()),
                       ),
                     ),
-                  )
-              ],
-            );
-          }),
-        ],
-      ),
-    );
-  }
+                  )),
+                  
+                  if (idx == 2)
+                    Padding(
+                      padding: const EdgeInsets.all(1.0),
+                      child: SizedBox(
+                        width: buttonSize,
+                        height: buttonSize,
+                        child: IconButton(
+                          onPressed: () => _handleBackspace(context),
+                          icon: const Icon(Icons.backspace, color: Colors.red),
+                        ),
+                      ),
+                    )
+                ],
+              );
+            }),
+          ],
+        ),
+      );
+    }
+  );
+}
 }

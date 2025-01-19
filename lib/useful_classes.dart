@@ -38,14 +38,15 @@ class PossibleLetters {
     }
   }
 
-  static List<List<PossibleLetters>> scan(List<List<String?>> letters) {
+  static List<List<PossibleLetters>> scan(BoardState boardState) {
     List<List<PossibleLetters>> possibleLetters = List.generate(
-      Board.boardSize, (_) => List.generate(
-        Board.boardSize, (_) => PossibleLetters()));
+      BoardState.boardSize, (_) => List.generate(
+        BoardState.boardSize, (_) => PossibleLetters()));
     int lettersBefore, lettersAfter;
+    var letters = boardState.letters;
 
-    for(int i=0; i<Board.boardSize; i++) {
-      for(int j=0; j<Board.boardSize; j++) {
+    for(int i=0; i<BoardState.boardSize; i++) {
+      for(int j=0; j<BoardState.boardSize; j++) {
         if (letters[i][j] != null) { // Lettre placée
           continue;
         }
@@ -53,12 +54,12 @@ class PossibleLetters {
           if (isHorizontal) {
             for (lettersBefore=0; (j-lettersBefore > 0) && (letters[i][j-lettersBefore-1] != null); lettersBefore++) {
             }
-            for (lettersAfter=0; (j+lettersAfter < Board.boardSize - 1) && (letters[i][j+lettersAfter+1] != null); lettersAfter++) {
+            for (lettersAfter=0; (j+lettersAfter < BoardState.boardSize - 1) && (letters[i][j+lettersAfter+1] != null); lettersAfter++) {
             }
           } else {
             for (lettersBefore=0; (i-lettersBefore > 0) && (letters[i-lettersBefore-1][j] != null); lettersBefore++) {
             }
-            for (lettersAfter=0; (i+lettersAfter < Board.boardSize - 1) && (letters[i+lettersAfter+1][j] != null); lettersAfter++) {
+            for (lettersAfter=0; (i+lettersAfter < BoardState.boardSize - 1) && (letters[i+lettersAfter+1][j] != null); lettersAfter++) {
             }
           }
           if (lettersBefore+lettersAfter == 0) { // Pas de lettre autour
@@ -80,19 +81,19 @@ class PossibleLetters {
               }
             }
             if (MainApp.dictionary.exists(proposal.toString())) {
-              int points = calculatePoints(proposal.toString());
-              for (int blank in Board.blanks.value) {
+              int points = boardState.calculatePoints(proposal.toString());
+              for (int blank in boardState.blanks) {
                 if (isHorizontal) {
-                  if (i * Board.boardSize + j - lettersBefore <= blank && blank <= i * Board.boardSize + j + lettersAfter) {
-                    points -= calculatePoints(proposal.toString()[blank % Board.boardSize - (j - lettersBefore)]);
+                  if (i * BoardState.boardSize + j - lettersBefore <= blank && blank <= i * BoardState.boardSize + j + lettersAfter) {
+                    points -= boardState.calculatePoints(proposal.toString()[blank % BoardState.boardSize - (j - lettersBefore)]);
                   }
                 } else {
-                  if ((blank-j) % Board.boardSize == 0 && blank ~/ Board.boardSize >= i - lettersBefore && blank ~/ Board.boardSize <= i + lettersAfter) {
-                    points -= calculatePoints(proposal.toString()[blank ~/ Board.boardSize - (i - lettersBefore)]);
+                  if ((blank-j) % BoardState.boardSize == 0 && blank ~/ BoardState.boardSize >= i - lettersBefore && blank ~/ BoardState.boardSize <= i + lettersAfter) {
+                    points -= boardState.calculatePoints(proposal.toString()[blank ~/ BoardState.boardSize - (i - lettersBefore)]);
                   }
                 }
               }
-              switch(Board.specialPositions[i][j]) {
+              switch(boardState.specialPositions[i][j]) {
                 case 'TW':
                   points *= 3;
                   break;
@@ -100,10 +101,10 @@ class PossibleLetters {
                   points *= 2;
                   break;
                 case 'TL':
-                  points += calculatePoints(char) * 2;
+                  points += boardState.calculatePoints(char) * 2;
                   break;
                 case 'DL':
-                  points += calculatePoints(char);
+                  points += boardState.calculatePoints(char);
                   break;
               }
               possibleLetters[i][j].add(char, points, isHorizontal);
@@ -125,24 +126,6 @@ class PlayableWord {
   int points;
 
   PlayableWord(this.word,  this.blankPositions, {this.row = -1, this.col = -1, this.isHorizontal = true, this.points = 0});
-
-  void place() {
-    List<List<String?>> letters = List.from(Board.letters.value);
-    List<int> blanks = List.from(Board.blanks.value);
-    for (int i = 0; i < word.length; i++) {
-      isHorizontal
-        ? letters[row][col + i] = word[i]
-        : letters[row + i][col] = word[i];
-    }
-    for (int blankPosition in blankPositions) {
-      isHorizontal
-        ? blanks.add(row * Board.boardSize + col + blankPosition)
-        : blanks.add((row + blankPosition) * Board.boardSize + col);
-    }
-    // Notifie que la valeur a changé
-    Board.letters.value = letters;
-    Board.blanks.value = blanks;
-  }
 
   void setPosition(int row, int col, bool isHorizontal) {
     this.row = row;
@@ -176,27 +159,6 @@ class BestWords {
   }
 }
 
-Map<String, int> letterPoints() => Board.boardType.value == 'scrabble' 
-  ?  {
-    'A': 1, 'B': 3, 'C': 3, 'D': 2, 'E': 1, 'F': 4, 'G': 2, 'H': 4, 'I': 1,
-    'J': 8, 'K': 10, 'L': 1, 'M': 2, 'N': 1, 'O': 1, 'P': 3, 'Q': 8, 'R': 1,
-    'S': 1, 'T': 1, 'U': 1, 'V': 4, 'W': 10, 'X': 10, 'Y': 10, 'Z': 10
-  }
-  : {
-    'A': 1, 'B': 5, 'C': 3, 'D': 4, 'E': 1, 'F': 5, 'G': 4, 'H': 5, 'I': 1,
-    'J': 7, 'K': 10, 'L': 2, 'M': 3, 'N': 1, 'O': 1, 'P': 4, 'Q': 7, 'R': 1,
-    'S': 1, 'T': 1, 'U': 2, 'V': 5, 'W': 10, 'X': 8, 'Y': 8, 'Z': 8
-  };
-
-
-int calculatePoints(String word) {
-  int points = 0;
-  for (int i = 0; i < word.length; i++) {
-    points += letterPoints()[word[i].toUpperCase()]!;
-  }
-  return points;
-}
-
 List<T> extractRow<T>(List<List<T>> table, int rowIndex) {
   if (rowIndex < 0 || rowIndex >= table.length) {
     throw RangeError("Index en dehors des limites");
@@ -224,7 +186,7 @@ class Dictionary {
       final List<String> lines = content.split('\n');
 
       // Initialiser les racines pour chaque longueur possible
-      _rootsByLength.addAll(List.generate(Board.boardSize + 1, (_) => TrieNode()));
+      _rootsByLength.addAll(List.generate(BoardState.boardSize + 1, (_) => TrieNode()));
       
       for (String word in lines) {
         word = word.trim();
@@ -265,15 +227,15 @@ class Dictionary {
     List<List<String>?> possibleLetters
   ) {
     Set<PlayableWord> words = {};
-    List<String> rackLetters = [];
+    Map<String, int> rackLetters = {};
     int blankCount = 0;
     
     // Séparer les blancs des lettres normales
     for (String letter in rack) {
-      if (letter == ' ' || letter == '*') {
+      if (letter == ' ') {
         blankCount++;
       } else {
-        rackLetters.add(letter);
+        rackLetters[letter] = (rackLetters[letter] ?? 0) + 1;
       }
     }
     
@@ -293,7 +255,7 @@ class Dictionary {
 
   void _getWordsWithPrefix(
     TrieNode node,
-    List<String> remainingLetters,
+    Map<String, int> remainingLetters,
     int remainingBlanks,
     int targetLength,
     String prefix,
@@ -329,15 +291,17 @@ class Dictionary {
     }
 
     // Essayer avec les lettres du rack
-    for (int i = 0; i < remainingLetters.length; i++) {
-      String letter = remainingLetters[i];
-      
+    for (String letter in remainingLetters.keys.toList()) {
+
       if (possibleLetters[position] != null && !possibleLetters[position]!.contains(letter)) {
         continue;
       }
       
       if (node.children.containsKey(letter)) {
-        remainingLetters.removeAt(i);
+        remainingLetters[letter] = remainingLetters[letter]! - 1;
+        if (remainingLetters[letter] == 0) {
+          remainingLetters.remove(letter);
+        }
         _getWordsWithPrefix(
           node.children[letter]!,
           remainingLetters,
@@ -349,7 +313,7 @@ class Dictionary {
           results,
           blankPositions
         );
-        remainingLetters.insert(i, letter);
+        remainingLetters[letter] = (remainingLetters[letter] ?? 0) + 1;
       }
     }
 
