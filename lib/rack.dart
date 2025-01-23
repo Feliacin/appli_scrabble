@@ -16,12 +16,11 @@ class Rack extends StatelessWidget {
         final totalWidth = constraints.maxWidth - 2*margin;
         final freeSpace = totalWidth/8;
         final padding = totalWidth/70;
-        final tileSize = (totalWidth - 2*padding - freeSpace) / 7 / 1.05;
+        final tileWidth = (totalWidth - 2*padding - freeSpace) / 7;
+        final tileSize = tileWidth / 1.05; // 0.05 de marge pour chaque tuile
         
         return Consumer2<AppState, RackState>(
           builder: (context, appState, rackState, _) {
-            final RenderBox box = context.findRenderObject() as RenderBox;
-            
             return GestureDetector(
               onTap: !appState.isGameMode 
                 ? () => rackState.isSelected = true
@@ -52,20 +51,15 @@ class Rack extends StatelessWidget {
                       ),
                       
                     DragTarget<DragData>(
-                      onWillAccept: (data) => true,
+                      onWillAcceptWithDetails: (details) => true,
                       onMove: (details) {
+                        final RenderBox box = context.findRenderObject() as RenderBox;
                         final localPosition = box.globalToLocal(details.offset);
-                        final tileWidth = tileSize * 1.05;
                         double position = localPosition.dx - margin - padding + 0.5*tileWidth;
-                        rackState.updateDragPosition(position, tileWidth, freeSpace);
+                        rackState._updateHoverIndex(position, tileWidth, totalWidth - 2*padding);
                       },
-                      onLeave: (_) => rackState.clearDragPosition(),
-                      onAcceptWithDetails: (details) {
-                        final localPosition = box.globalToLocal(details.offset);
-                        final tileWidth = tileSize * 1.05;
-                        double position = localPosition.dx - margin - padding + 0.5*tileWidth;
-                        rackState.acceptDrop(position, tileWidth, freeSpace, details.data);
-                      },
+                      onLeave: (_) => rackState._clearHoverIndex(),
+                      onAcceptWithDetails: (details) => rackState._acceptDrop(details.data),
                       builder: (context, candidateData, rejectedData) {
                         return Container(
                           margin: const EdgeInsets.all(margin),
@@ -78,21 +72,18 @@ class Rack extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: padding,
-                              vertical: padding,
-                            ),
+                            padding: EdgeInsets.all(padding),
                             child: Stack(
                               children: [
                                 ...List.generate(rackState.letters.length, (index) {
-                                  final position = rackState.getLetterPosition(
+                                  final position = rackState._getLetterPosition(
                                     index,
-                                    tileSize * 1.05,
-                                    freeSpace,
+                                    tileWidth,
                                     totalWidth - 2 * padding
                                   );
                                   
                                   return AnimatedPositioned(
+                                    key: ValueKey(rackState.keys[index]),
                                     duration: const Duration(milliseconds: 150),
                                     curve: Curves.easeInOut,
                                     left: position,
@@ -137,21 +128,26 @@ class Rack extends StatelessWidget {
         onDragStarted: () => rackState.startDragging(index),
         onDragEnd: (_) => rackState.endDragging(),
         feedback: Tile.buildTileWithShadow(rackState.letters[index], size),
-        childWhenDragging: Container(),
-        child: Tile.buildTile(rackState.letters[index], size),
-      ),
-    );
-  }
-}
+        childWhenDragging: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.red),
+          ),
+        ),
+        child: Tile.buildTile(rackState.letters[index], size, horizontalMargin: size * 0.025),
+            ),
+          );
+        }
+      }
 
 class RackState extends ChangeNotifier {
   static const int maxLetters = 7;
-  
   List<String> letters = [];
-  int firstGroupLength = 0;
+  List<int> keys = [];
+  int _leftGroupLength = 0;
   bool _isSelected = true;
   int? _draggingIndex;
-  double? _dragPosition;
+  int? _hoverIndex;
+  int _leftGroupShift = 0; // lorsqu'on survole le centre du rack avec une lettre, on peut la déposer sur le côté gauche ou droit
   
   bool get isSelected => _isSelected;
   set isSelected(bool value) {
@@ -166,122 +162,147 @@ class RackState extends ChangeNotifier {
 
   void endDragging() {
     _draggingIndex = null;
-    _dragPosition = null;
+    _hoverIndex = null;
+    _leftGroupShift = 0;
     notifyListeners();
   }
 
-  void updateDragPosition(double position, double tileWidth, double freeSpace) {
-    _dragPosition = position;
+  void _updateHoverIndex(double position, double tileWidth, double width) {
+    if (_draggingIndex == null) return;
+    final previousShift = _leftGroupShift;
+    final index = _getDragTargetIndex(position, tileWidth, width);
+    if (index != _hoverIndex || _leftGroupShift != previousShift) {
+      _hoverIndex = index;
+      notifyListeners();
+    }
+  }
+
+  void _clearHoverIndex() {
+    _hoverIndex = null;
+    _leftGroupShift = 0;
     notifyListeners();
   }
 
-  void clearDragPosition() {
-    _dragPosition = null;
-    notifyListeners();
-  }
+  double _getLetterPosition(int index, double tileWidth, double width) {
+    // Emplacement de la tuile en cours de déplacement, container vide pour le mmoment, 
+    // mais qui va redevenir une tuile quand on va la lâcher.
+    // Cela évite une animation de déplacement depuis son emplacement d'origine.
+    if(_hoverIndex != null && index == _draggingIndex!) {
+      print(_leftGroupShift);
+      return _hoverIndex! < _leftGroupLength || 
+        (_hoverIndex! == _leftGroupLength && _draggingIndex! >= _leftGroupLength && _leftGroupShift > 0)
+        ? _hoverIndex! * tileWidth
+        : width - tileWidth - tileWidth * (letters.length - 1 - _hoverIndex!);
+    }
 
-  double getLetterPosition(int index, double tileWidth, double freeSpace, double totalWidth) {
-    if (_draggingIndex == index) return 0;
-    
-    final isLeftGroup = index < firstGroupLength;
-    final isDraggingFromLeft = _draggingIndex != null && _draggingIndex! < firstGroupLength;
+    final isLeftGroup = index < _leftGroupLength;
     
     double basePosition;
     if (isLeftGroup) {
       basePosition = index * tileWidth;
     } else {
-      basePosition = (index - firstGroupLength) * tileWidth + freeSpace + firstGroupLength * tileWidth;
+      basePosition = width - tileWidth - tileWidth * (letters.length - 1 - index);     
     }
 
     // Si on est en train de faire glisser une lettre
-    if (_dragPosition != null && _draggingIndex != null) {
-      final dragTargetIndex = _getDragTargetIndex(_dragPosition!, tileWidth, freeSpace);
-      
-      if (dragTargetIndex <= index && index < _draggingIndex! || 
-          dragTargetIndex >= index && index > _draggingIndex!) {
-        // Déplacer la lettre dans la direction opposée au mouvement
-        return basePosition - tileWidth * (dragTargetIndex < _draggingIndex! ? -1 : 1);
+    if (_draggingIndex != null) {
+      if (_hoverIndex == null) {
+        if (isLeftGroup && index > _draggingIndex! || 
+            !isLeftGroup && index < _draggingIndex!) {
+          return basePosition - tileWidth * (index < _draggingIndex! ? -1 : 1);
+        }
+      } else {
+        if (_hoverIndex! <= index && index < _draggingIndex! || 
+            _hoverIndex! >= index && index > _draggingIndex!) {              
+          // Déplacer la lettre dans la direction opposée au mouvement
+          return basePosition - tileWidth * (_hoverIndex! < _draggingIndex! ? -1 : 1);
+        }
       }
     }
     
     return basePosition;
   }
 
-  int _getDragTargetIndex(double position, double tileWidth, double freeSpace) {
-    if (position < firstGroupLength * tileWidth) {
+  int _getDragTargetIndex(double position, double tileWidth, double width) { // position du centre de la lettre
+    final isLeftGroup = _draggingIndex! < _leftGroupLength;
+    final leftGroupLength = _leftGroupLength - (isLeftGroup ? 1 : 0);
+
+    if (position < leftGroupLength * tileWidth) {
+      if(!isLeftGroup) _leftGroupShift = 1;
       return max(0, (position / tileWidth).round());
-    } else if (position - firstGroupLength * tileWidth < freeSpace) {
-      return firstGroupLength;
+    } else if (position > width - (letters.length-1 - leftGroupLength) * tileWidth) {
+      if(isLeftGroup) _leftGroupShift = -1;
+      return min(letters.length-1, letters.length-1 - ((width - position) / tileWidth).round());
     } else {
-      final rightGroupPosition = position - firstGroupLength * tileWidth - freeSpace;
-      return firstGroupLength + 
-        min(letters.length - firstGroupLength, (rightGroupPosition / tileWidth).round());
+      if (position - leftGroupLength * tileWidth < (width - tileWidth*(letters.length-1)) / 2) {
+        if (!isLeftGroup) _leftGroupShift = 1;
+      } else {
+        if(isLeftGroup) _leftGroupShift = -1;
+      }
+      return leftGroupLength;
     }
   }
 
-  void acceptDrop(double position, double tileWidth, double freeSpace, DragData data) {
-    final targetIndex = _getDragTargetIndex(position, tileWidth, freeSpace);
-    
+  void _acceptDrop(DragData data) {
+    _leftGroupLength += _leftGroupShift;  
     if (data.rackIndex != null) {
-      moveLetter(data.rackIndex!, targetIndex);
+      final fromIndex = data.rackIndex!;
+      final toIndex = _hoverIndex!;
+      final letter = letters[fromIndex];
+      letters.removeAt(fromIndex);
+      letters.insert(toIndex, letter);
+
+      int key = keys[fromIndex];
+      if (fromIndex < toIndex) {
+        for (int i = fromIndex; i < toIndex; i++) {
+        keys[i] = keys[i + 1];
+        }
+      } else {
+        for (int i = fromIndex; i > toIndex; i--) {
+        keys[i] = keys[i - 1];
+        }
+      }
+      keys[toIndex] = key;
     } else if (data.boardIndex != null && letters.length < maxLetters) {
-      insertLetter(data.letter, targetIndex);
+      insertLetter(data.letter, _hoverIndex!);
     }
-    
-    _dragPosition = null;
-    notifyListeners();
   }
-
-  void moveLetter(int fromIndex, int toIndex) {
-    if (fromIndex == toIndex) return;
-    
-    final letter = letters[fromIndex];
-    letters.removeAt(fromIndex);
-    
-    if (fromIndex < firstGroupLength) {
-      firstGroupLength--;
-    }
-    
-    if (toIndex <= firstGroupLength) {
-      letters.insert(toIndex, letter);
-      firstGroupLength++;
-    } else {
-      letters.insert(toIndex, letter);
-    }
-    
-    notifyListeners();
-  }
-
-  // Les autres méthodes restent identiques...
+  
   void removeLetter(int index) {
     if (index < letters.length) {
       letters.removeAt(index);
-      if (index < firstGroupLength) {
-        firstGroupLength--;
+      if (index < _leftGroupLength) {
+        _leftGroupLength--;
       }
+      keys.remove(letters.length);
     }
     notifyListeners();
   }
 
   void addLetter(String letter) {
     if (letters.length < maxLetters) {
+      keys.add(letters.length);
       letters.add(letter);
-      firstGroupLength++;
+      _leftGroupLength++;
     }
     notifyListeners();
   }
 
   void clickLetter(int index) {
+    final isLeftGroup = index < _leftGroupLength;
     final letter = letters[index];
-    final isLeftGroup = index < firstGroupLength;
+    final key = keys[index];
     letters.removeAt(index);
+    keys.removeAt(index);
 
     if (isLeftGroup) {
-      firstGroupLength--;
-      letters.insert(firstGroupLength, letter);
+      _leftGroupLength--;
+      letters.insert(_leftGroupLength, letter);
+      keys.insert(_leftGroupLength, key);
     } else {
-      letters.insert(firstGroupLength, letter);
-      firstGroupLength++;
+      letters.insert(_leftGroupLength, letter);
+      keys.insert(_leftGroupLength, key);
+      _leftGroupLength++;
     }
     notifyListeners();
   }
@@ -289,8 +310,8 @@ class RackState extends ChangeNotifier {
   void insertLetter(String letter, int index) {
     if (letters.length < maxLetters) {
       letters.insert(index, letter);
-      if (index <= firstGroupLength) {
-        firstGroupLength++;
+      if (index <= _leftGroupLength) {
+        _leftGroupLength++;
       }
       notifyListeners();
     }

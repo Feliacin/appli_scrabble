@@ -184,11 +184,11 @@ class Tile extends StatelessWidget {
     );
   }
 
-  static Widget buildTile(String? letter, double size) {
+  static Widget buildTile(String? letter, double size, {double horizontalMargin = 0}) {
     return Container(
       width: size,
       height: size,
-      margin: EdgeInsets.symmetric(horizontal: size * 0.025),
+      margin: EdgeInsets.symmetric(horizontal: horizontalMargin),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * 0.15),
         border: letter != null ? Border.all(
