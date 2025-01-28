@@ -27,30 +27,106 @@ class Tile extends StatelessWidget {
             row == boardState.selectedIndex! ~/ BoardState.boardSize && 
             col == (boardState.selectedIndex! % BoardState.boardSize) + 1));
 
-        return GestureDetector(
-          onTap: () => _handleTap(context, boardState, rackState),
-          child: DragTarget<DragData>(
-            onAccept: (data) => _handleDragAccept(context, boardState, rackState, data),
-            builder: (context, candidateData, rejectedData) {
-              return Container(
-                decoration: _buildDecoration(
-                  letter: letter,
-                  isSelected: isSelected,
-                  isDirectionIndicator: isDirectionIndicator,
-                  isVertical: isVertical,
-                  isTemp: boardState.tempLetters.contains(index),
-                  isBlank: boardState.blanks.contains(index),
-                ),
-                child: Center(
-                  child: letter != null
-                    ? _buildLetterWidget(letter, boardState)
-                    : _buildPropertyWidget(property),
-                ),
-              );
-            },
-          ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final tileSize = constraints.maxWidth;
+
+            return GestureDetector(
+              onTap: () => _handleTap(context, boardState, rackState),
+              child: DragTarget<DragData>(
+                onAccept: (data) => _handleDragAccept(context, boardState, rackState, data),
+                builder: (context, candidateData, rejectedData) {
+                  return Container(
+                    decoration: _buildBackgroundDecoration(
+                      isSelected,
+                      isDirectionIndicator,
+                      isVertical,
+                      property,
+                      tileSize,
+                    ),
+                    child: Center(
+                      child: letter != null
+                        ? _buildLetterWidget(letter, boardState, tileSize)
+                        : _buildPropertyWidget(property),
+                    ),
+                  );
+                },
+              ),
+            );
+          }
         );
       },
+    );
+  }
+
+  BoxDecoration _buildBackgroundDecoration(
+    bool isSelected,
+    bool isDirectionIndicator,
+    bool isVertical,
+    String property,
+    double tileSize,
+  ) {
+    final baseColor = Board.specialColors[property] ?? Colors.white;
+
+    if (isDirectionIndicator) {
+      return BoxDecoration(
+        gradient: LinearGradient(
+          begin: isVertical ? Alignment.topCenter : Alignment.centerLeft,
+          end: isVertical ? Alignment.bottomCenter : Alignment.centerRight,
+          colors: [Colors.limeAccent, baseColor],
+        ),
+        borderRadius: BorderRadius.circular(tileSize * 0.15),
+      );
+    } else {
+      return BoxDecoration(
+        color: isSelected ? Colors.limeAccent : baseColor,
+        borderRadius: BorderRadius.circular(tileSize * 0.15),
+      );
+    }
+  }
+
+  Widget _buildLetterWidget(String letter, BoardState boardState, double tileSize) {
+    final isTemp = boardState.tempLetters.contains(index);
+    final isBlank = boardState.blanks.contains(index);
+    
+    if (isTemp) {
+      return Draggable<DragData>(
+        data: DragData(
+          letter: letter,
+          boardIndex: index,
+        ),
+        feedback: Material(
+          color: Colors.transparent,
+          child: buildTileWithShadow(letter, tileSize)
+        ),
+        childWhenDragging: _buildPropertyWidget(property),
+        child: buildTile(
+          letter, 
+          tileSize,
+          specialColor: [Colors.amberAccent[100]!, Colors.amberAccent]
+        ),
+      );
+    } else if (isBlank) {
+    return buildTile(
+        letter,
+        tileSize,
+        specialColor: [Colors.pink[50]!, Colors.pink[100]!]
+      );
+    } else{
+      return buildTile(
+        letter,
+        tileSize,
+      );
+    }
+  }
+
+  Widget _buildPropertyWidget(String property) {
+    return Text(
+      property,
+      style: TextStyle(
+        fontSize: 8,
+        color: Colors.brown[600],
+      ),
     );
   }
 
@@ -84,88 +160,6 @@ class Tile extends StatelessWidget {
     }
   }
 
-  BoxDecoration _buildDecoration({
-    required String? letter,
-    required bool isSelected,
-    required bool isDirectionIndicator,
-    required bool isVertical,
-    required bool isTemp,
-    required bool isBlank,
-  }) {
-    final baseColor = letter != null
-      ? (isBlank ? Colors.pink[50]! : Colors.amber[100]!)
-      : (Board.specialColors[property] ?? Colors.white);
-
-    if (isSelected) {
-      return BoxDecoration(
-        color: Colors.limeAccent,
-        borderRadius: BorderRadius.circular(3),
-      );
-    } else if (isDirectionIndicator) {
-      return BoxDecoration(
-        gradient: LinearGradient(
-          begin: isVertical ? Alignment.topCenter : Alignment.centerLeft,
-          end: isVertical ? Alignment.bottomCenter : Alignment.centerRight,
-          colors: [Colors.limeAccent, baseColor],
-        ),
-        borderRadius: BorderRadius.circular(3),
-      );
-    } else if (isTemp) {
-        return BoxDecoration(
-          color: Colors.amberAccent,
-          borderRadius: BorderRadius.circular(3),
-        );
-    } else {
-      return BoxDecoration(
-        color: baseColor,
-        borderRadius: BorderRadius.circular(3),
-      );
-    }
-  }
-
-
-  Widget _buildLetterWidget(String letter, BoardState boardState) {
-    final isTemp = boardState.tempLetters.contains(index);
-    
-    if (isTemp) {
-      return Draggable<DragData>(
-        data: DragData(
-          letter: letter,
-          boardIndex: index,
-        ),
-        feedback: buildTile(letter, 30),
-        childWhenDragging: _buildPropertyWidget(property),
-        child: Text(
-          letter.toUpperCase(),
-          style: const TextStyle(
-            color: Colors.brown,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-      );
-    } else {
-      return Text(
-        letter.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.brown,
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-        ),
-      );
-    }
-  }
-
-  Widget _buildPropertyWidget(String property) {
-    return Text(
-      property,
-      style: TextStyle(
-        fontSize: 8,
-        color: Colors.brown[600],
-      ),
-    );
-  }
-
   static Widget buildTileWithShadow(String letter, double size) {
     return Container(
       width: size,
@@ -184,45 +178,36 @@ class Tile extends StatelessWidget {
     );
   }
 
-  static Widget buildTile(String? letter, double size, {double horizontalMargin = 0}) {
+  static Widget buildTile(String letter, double size, {
+      double horizontalMargin = 0,
+      bool withBorder = false,
+      List<Color>? specialColor}) {
     return Container(
       width: size,
       height: size,
       margin: EdgeInsets.symmetric(horizontal: horizontalMargin),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * 0.15),
-        border: letter != null ? Border.all(
+        border: withBorder ? Border.all(
           color: Colors.brown[200]!,
           width: 1.5,
         ) : null,
-        gradient: letter != null ? LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.amber[50]!,
-            Colors.amber[100]!,
-          ],
-        ) : null,
+          colors: specialColor ?? [Colors.amber[50]!, Colors.amber[100]!],
+        ),
       ),
-      child: letter != null
-        ? Center(
+      child: Center(
             child: Text(
               letter.toUpperCase(),
               style: TextStyle(
                 fontSize: size * 0.6,
                 fontWeight: FontWeight.bold,
                 color: Colors.brown[700],
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withOpacity(0.2),
-                    offset: const Offset(0, 1),
-                    blurRadius: 1,
-                  ),
-                ],
               ),
             ),
           )
-        : null,
     );
   }
 }

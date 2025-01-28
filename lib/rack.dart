@@ -127,13 +127,16 @@ class Rack extends StatelessWidget {
         ),
         onDragStarted: () => rackState.startDragging(index),
         onDragEnd: (_) => rackState.endDragging(),
-        feedback: Tile.buildTileWithShadow(rackState.letters[index], size),
+        feedback: Material(
+          color: Colors.transparent,
+          child: Tile.buildTileWithShadow(rackState.letters[index], size)
+        ),
         childWhenDragging: Container(
           decoration: BoxDecoration(
             border: Border.all(color: Colors.red),
           ),
         ),
-        child: Tile.buildTile(rackState.letters[index], size, horizontalMargin: size * 0.025),
+        child: Tile.buildTile(rackState.letters[index], size, horizontalMargin: size * 0.025, withBorder: true),
             ),
           );
         }
@@ -188,7 +191,6 @@ class RackState extends ChangeNotifier {
     // mais qui va redevenir une tuile quand on va la lâcher.
     // Cela évite une animation de déplacement depuis son emplacement d'origine.
     if(_hoverIndex != null && index == _draggingIndex!) {
-      print(_leftGroupShift);
       return _hoverIndex! < _leftGroupLength || 
         (_hoverIndex! == _leftGroupLength && _draggingIndex! >= _leftGroupLength && _leftGroupShift > 0)
         ? _hoverIndex! * tileWidth

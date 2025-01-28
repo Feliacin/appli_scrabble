@@ -11,11 +11,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class Board extends StatelessWidget {
   const Board({super.key});
 
-  static const Map<String, Color> specialColors = {
-    'TW': Color(0xFFEF9A9A), // Colors.red[300]
-    'DW': Color(0xFFF48FB1), // Colors.pink[200]
-    'TL': Color(0xFF90CAF9), // Colors.blue[300]
-    'DL': Color(0xFF81D4FA), // Colors.lightBlue[200]
+  static Map<String, Color> specialColors = {
+    'TW': Colors.red[400]!,
+    'DW': Colors.pink[200]!,
+    'TL': Colors.blue[300]!,
+    'DL': Colors.lightBlue[200]!,
     '': Colors.white,
   };
 
@@ -25,27 +25,33 @@ class Board extends StatelessWidget {
       aspectRatio: 1,
       child: Consumer<BoardState>(
         builder: (context, boardState, _) {
-          return Container(
-            decoration: BoxDecoration(
-              color: Colors.brown[300],
-              border: Border.all(color: Colors.brown[300]!, width: 2),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: GridView.builder(
-              padding: EdgeInsets.zero,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: BoardState.boardSize,
-                crossAxisSpacing: 2.0,
-                mainAxisSpacing: 2.0,
-              ),
-              itemCount: BoardState.boardSize * BoardState.boardSize,
-              itemBuilder: (context, index) {
-                return Tile(
-                  property: boardState.specialPositions[index ~/ BoardState.boardSize][index % BoardState.boardSize],
-                  index: index,
-                );
-              },
-            ),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final spacing = constraints.maxWidth / 200;
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.brown[300],
+                  border: Border.all(color: Colors.brown[300]!, width: spacing),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: GridView.builder(
+                  padding: EdgeInsets.zero,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: BoardState.boardSize,
+                    crossAxisSpacing: spacing,
+                    mainAxisSpacing: spacing,
+                  ),
+                  itemCount: BoardState.boardSize * BoardState.boardSize,
+                  itemBuilder: (context, index) {
+                    return Tile(
+                      property: boardState.specialPositions[index ~/ BoardState.boardSize][index % BoardState.boardSize],
+                      index: index,
+                    );
+                  },
+                ),
+              );
+            }
           );
         },
       ),
