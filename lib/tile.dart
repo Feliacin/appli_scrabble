@@ -34,6 +34,7 @@ class Tile extends StatelessWidget {
             return GestureDetector(
               onTap: () => _handleTap(context, boardState, rackState),
               child: DragTarget<DragData>(
+                onWillAccept: (data) => boardState.letters[row][col] == null,
                 onAccept: (data) => _handleDragAccept(context, boardState, rackState, data),
                 builder: (context, candidateData, rejectedData) {
                   return Container(
@@ -95,6 +96,7 @@ class Tile extends StatelessWidget {
           letter: letter,
           boardIndex: index,
         ),
+        onDragEnd: (details) => boardState.endDragging(details.wasAccepted, index),
         feedback: Material(
           color: Colors.transparent,
           child: buildTileWithShadow(letter, tileSize)
@@ -154,8 +156,6 @@ class Tile extends StatelessWidget {
       // Retirer la lettre du rack ou de son ancienne position
       if (data.rackIndex != null) {
         rackState.removeLetter(data.rackIndex!);
-      } else if (data.boardIndex != null) {
-        boardState.removeTemporaryLetter(data.boardIndex!);
       }
     }
   }

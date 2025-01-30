@@ -1,5 +1,6 @@
 import 'package:appli_scrabble/board.dart';
 import 'package:appli_scrabble/rack.dart';
+import 'package:appli_scrabble/tile.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -41,9 +42,7 @@ class Keyboard extends StatelessWidget {
     final boardState = context.read<BoardState>();
     
     if (rackState.isSelected) {
-      if (rackState.letters.isNotEmpty) {
-        rackState.removeLetter(rackState.letters.length - 1);
-      }
+      rackState.removeLetter(rackState.letters.length - 1);
     } else if (boardState.selectedIndex != null) {
       final index = boardState.selectedIndex!;
       final row = index ~/ BoardState.boardSize;
@@ -62,66 +61,66 @@ class Keyboard extends StatelessWidget {
   }
 
   @override
-Widget build(BuildContext context) {
-  const letters = [
-    ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
-    ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
-    [' ', 'w', 'x', 'c', 'v', 'b', 'n'],
-  ];
-  
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      // On prend la largeur disponible et on la divise par 10 (nombre max de touches par ligne)
-      final keySize = (constraints.maxWidth - 20) / 10; // 20 pour le padding
-      final buttonSize = keySize - 2; // 2 pour le padding entre les touches
-      
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ...letters.asMap().entries.map((entry) {
-              int idx = entry.key;
-              List<String> row = entry.value;
-              
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ...row.map((letter) => Padding(
-                    padding: const EdgeInsets.all(1.0),
-                    child: SizedBox(
-                      width: buttonSize,
-                      height: buttonSize,
-                      child: ElevatedButton(
-                        onPressed: () => _handleLetterPress(context, letter),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          backgroundColor: Colors.white,
-                        ),
-                        child: Text(letter.toUpperCase()),
-                      ),
-                    ),
-                  )),
-                  
-                  if (idx == 2)
-                    Padding(
+  Widget build(BuildContext context) {
+    const letters = [
+      ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+      ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
+      [' ', 'w', 'x', 'c', 'v', 'b', 'n'],
+    ];
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final keySize = (constraints.maxWidth - 20) / 10;
+        final buttonSize = keySize - 2;
+        
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...letters.asMap().entries.map((entry) {
+                int idx = entry.key;
+                List<String> row = entry.value;
+                
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ...row.map((letter) => Padding(
                       padding: const EdgeInsets.all(1.0),
                       child: SizedBox(
                         width: buttonSize,
                         height: buttonSize,
-                        child: IconButton(
-                          onPressed: () => _handleBackspace(context),
-                          icon: const Icon(Icons.backspace, color: Colors.red),
+                        child: InkWell(
+                          onTap: () => _handleLetterPress(context, letter),
+                          child: Tile.buildTile(letter, buttonSize, withBorder: true),
                         ),
                       ),
-                    )
-                ],
-              );
-            }),
-          ],
-        ),
-      );
-    }
-  );
-}
+                    )),
+                    
+                    if (idx == 2)
+                      Padding(
+                        padding: const EdgeInsets.all(1.0),
+                        child: SizedBox(
+                          width: buttonSize,
+                          height: buttonSize,
+                          child: InkWell(
+                            onTap: () => _handleBackspace(context),
+                            child: Tile.buildTile(
+                              '⌫',
+                              buttonSize,
+                              specialColor: [Colors.red[50]!, Colors.red[100]!],
+                              withBorder: true
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

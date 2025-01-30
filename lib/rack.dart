@@ -19,8 +19,8 @@ class Rack extends StatelessWidget {
         final tileWidth = (totalWidth - 2*padding - freeSpace) / 7;
         final tileSize = tileWidth / 1.05; // 0.05 de marge pour chaque tuile
         
-        return Consumer2<AppState, RackState>(
-          builder: (context, appState, rackState, _) {
+        return Consumer3<AppState, RackState, BoardState>(
+          builder: (context, appState, rackState, boardState, _) {
             return GestureDetector(
               onTap: !appState.isGameMode 
                 ? () => rackState.isSelected = true
@@ -56,7 +56,7 @@ class Rack extends StatelessWidget {
                         final RenderBox box = context.findRenderObject() as RenderBox;
                         final localPosition = box.globalToLocal(details.offset);
                         double position = localPosition.dx - margin - padding + 0.5*tileWidth;
-                        rackState._updateHoverIndex(position, tileWidth, totalWidth - 2*padding);
+                        rackState._updateHoverIndex(position, tileWidth, totalWidth - 2*padding, details.data.boardIndex != null);
                       },
                       onLeave: (_) => rackState._clearHoverIndex(),
                       onAcceptWithDetails: (details) => rackState._acceptDrop(details.data),
@@ -79,7 +79,7 @@ class Rack extends StatelessWidget {
                                   final position = rackState._getLetterPosition(
                                     index,
                                     tileWidth,
-                                    totalWidth - 2 * padding
+                                    totalWidth - 2 * padding,
                                   );
                                   
                                   return AnimatedPositioned(
@@ -115,7 +115,7 @@ class Rack extends StatelessWidget {
   Widget _buildDraggableTile(BuildContext context, RackState rackState, int index, double size, bool isGameMode) {
     return GestureDetector(
       onTap: isGameMode
-        ? () => rackState.clickLetter(index)
+        ? () => rackState._clickLetter(index)
         : () {
             rackState.isSelected = true;
             context.read<BoardState>().setSelectedIndex(null);
@@ -125,8 +125,8 @@ class Rack extends StatelessWidget {
           letter: rackState.letters[index],
           rackIndex: index,
         ),
-        onDragStarted: () => rackState.startDragging(index),
-        onDragEnd: (_) => rackState.endDragging(),
+        onDragStarted: () => rackState._startDragging(index),
+        onDragEnd: (_) => rackState._endDragging(),
         feedback: Material(
           color: Colors.transparent,
           child: Tile.buildTileWithShadow(rackState.letters[index], size)
@@ -158,25 +158,32 @@ class RackState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void startDragging(int index) {
+  void _startDragging(int index) {
     _draggingIndex = index;
     notifyListeners();
   }
 
-  void endDragging() {
+  void _endDragging() {
     _draggingIndex = null;
     _hoverIndex = null;
     _leftGroupShift = 0;
     notifyListeners();
   }
 
-  void _updateHoverIndex(double position, double tileWidth, double width) {
-    if (_draggingIndex == null) return;
-    final previousShift = _leftGroupShift;
-    final index = _getDragTargetIndex(position, tileWidth, width);
-    if (index != _hoverIndex || _leftGroupShift != previousShift) {
-      _hoverIndex = index;
-      notifyListeners();
+  void _updateHoverIndex(double position, double tileWidth, double width, bool fromBoard) {
+    if (fromBoard) {
+      final index = _getDragTargetIndex(position, tileWidth, width);
+      if (index != _hoverIndex) {
+        _hoverIndex = index;
+        notifyListeners();
+      }
+    } else if (_draggingIndex != null) { // Null au démarrage
+      final previousShift = _leftGroupShift;
+      final index = _getDragTargetIndex(position, tileWidth, width);
+      if (index != _hoverIndex || _leftGroupShift != previousShift) {
+        _hoverIndex = index;
+        notifyListeners();
+      }
     }
   }
 
@@ -187,10 +194,11 @@ class RackState extends ChangeNotifier {
   }
 
   double _getLetterPosition(int index, double tileWidth, double width) {
-    // Emplacement de la tuile en cours de déplacement, container vide pour le mmoment, 
-    // mais qui va redevenir une tuile quand on va la lâcher.
-    // Cela évite une animation de déplacement depuis son emplacement d'origine.
-    if(_hoverIndex != null && index == _draggingIndex!) {
+    final formBoard = _draggingIndex == null && _hoverIndex != null;
+
+    // Emplacement de la tuile en cours de déplacement, invisible tant qu'elle n'est pas lâchée.
+    // On la place à l'emplacement final pour éviter une animation de déplacement depuis son emplacement d'origine.
+    if(!formBoard && _hoverIndex != null && index == _draggingIndex!) {
       return _hoverIndex! < _leftGroupLength || 
         (_hoverIndex! == _leftGroupLength && _draggingIndex! >= _leftGroupLength && _leftGroupShift > 0)
         ? _hoverIndex! * tileWidth
@@ -198,26 +206,33 @@ class RackState extends ChangeNotifier {
     }
 
     final isLeftGroup = index < _leftGroupLength;
-    
     double basePosition;
     if (isLeftGroup) {
       basePosition = index * tileWidth;
     } else {
-      basePosition = width - tileWidth - tileWidth * (letters.length - 1 - index);     
+      basePosition = width - tileWidth - tileWidth * (letters.length - 1 - index);
     }
 
     // Si on est en train de faire glisser une lettre
+    if (formBoard) {
+      if (isLeftGroup && _hoverIndex! <= index) {
+        return basePosition + tileWidth;
+      } else if (!isLeftGroup && _hoverIndex! > index) {
+        return basePosition - tileWidth;
+      }
+    } else
     if (_draggingIndex != null) {
       if (_hoverIndex == null) {
-        if (isLeftGroup && index > _draggingIndex! || 
-            !isLeftGroup && index < _draggingIndex!) {
-          return basePosition - tileWidth * (index < _draggingIndex! ? -1 : 1);
+        if (isLeftGroup && index > _draggingIndex!) {
+          return basePosition - tileWidth;
+        } else if (!isLeftGroup && index < _draggingIndex!) {
+          return basePosition + tileWidth;
         }
       } else {
-        if (_hoverIndex! <= index && index < _draggingIndex! || 
-            _hoverIndex! >= index && index > _draggingIndex!) {              
-          // Déplacer la lettre dans la direction opposée au mouvement
-          return basePosition - tileWidth * (_hoverIndex! < _draggingIndex! ? -1 : 1);
+        if (_hoverIndex! <= index && index < _draggingIndex!) {
+          return basePosition + tileWidth;
+        } else if (_hoverIndex! >= index && index > _draggingIndex!) {
+          return basePosition - tileWidth;
         }
       }
     }
@@ -226,23 +241,31 @@ class RackState extends ChangeNotifier {
   }
 
   int _getDragTargetIndex(double position, double tileWidth, double width) { // position du centre de la lettre
-    final isLeftGroup = _draggingIndex! < _leftGroupLength;
-    final leftGroupLength = _leftGroupLength - (isLeftGroup ? 1 : 0);
+    final fromBoard = _draggingIndex == null;
+    final isLeftGroup = !fromBoard ? _draggingIndex! < _leftGroupLength : null;
+    final leftGroupLength = _leftGroupLength - (isLeftGroup != null && isLeftGroup ? 1 : 0);
+    final letterCount = fromBoard ? letters.length : letters.length - 1;
 
+    // Côté gauche
     if (position < leftGroupLength * tileWidth) {
-      if(!isLeftGroup) _leftGroupShift = 1;
+      _leftGroupShift = fromBoard || !isLeftGroup! ? 1 : 0;
       return max(0, (position / tileWidth).round());
-    } else if (position > width - (letters.length-1 - leftGroupLength) * tileWidth) {
-      if(isLeftGroup) _leftGroupShift = -1;
-      return min(letters.length-1, letters.length-1 - ((width - position) / tileWidth).round());
-    } else {
-      if (position - leftGroupLength * tileWidth < (width - tileWidth*(letters.length-1)) / 2) {
-        if (!isLeftGroup) _leftGroupShift = 1;
-      } else {
-        if(isLeftGroup) _leftGroupShift = -1;
-      }
-      return leftGroupLength;
     }
+    
+    // Côté droit
+    if (position > width - (letters.length-1 - leftGroupLength) * tileWidth) {
+        _leftGroupShift = !fromBoard && isLeftGroup! ? -1 : 0;
+        return min(letterCount, letterCount - ((width - position) / tileWidth).round());
+    }
+    
+    // Centre
+    final middlePosition = (width - tileWidth * letterCount) / 2;
+    if (position - leftGroupLength * tileWidth < middlePosition) {
+      _leftGroupShift = fromBoard || !isLeftGroup! ? 1 : 0;
+    } else {
+      _leftGroupShift = !fromBoard && isLeftGroup! ? -1 : 0;
+    }
+    return leftGroupLength;
   }
 
   void _acceptDrop(DragData data) {
@@ -265,32 +288,15 @@ class RackState extends ChangeNotifier {
         }
       }
       keys[toIndex] = key;
-    } else if (data.boardIndex != null && letters.length < maxLetters) {
-      insertLetter(data.letter, _hoverIndex!);
+    } else {
+      letters.insert(_hoverIndex!, data.letter);
+      keys.insert(_hoverIndex!, _newKey());
     }
-  }
-  
-  void removeLetter(int index) {
-    if (index < letters.length) {
-      letters.removeAt(index);
-      if (index < _leftGroupLength) {
-        _leftGroupLength--;
-      }
-      keys.remove(letters.length);
-    }
+    _hoverIndex = null;
     notifyListeners();
   }
 
-  void addLetter(String letter) {
-    if (letters.length < maxLetters) {
-      keys.add(letters.length);
-      letters.add(letter);
-      _leftGroupLength++;
-    }
-    notifyListeners();
-  }
-
-  void clickLetter(int index) {
+  void _clickLetter(int index) {
     final isLeftGroup = index < _leftGroupLength;
     final letter = letters[index];
     final key = keys[index];
@@ -309,14 +315,32 @@ class RackState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void insertLetter(String letter, int index) {
-    if (letters.length < maxLetters) {
-      letters.insert(index, letter);
-      if (index <= _leftGroupLength) {
-        _leftGroupLength++;
-      }
-      notifyListeners();
+  int _newKey() {
+    int i = 0;
+    while (keys.contains(i)) {
+      i++;
     }
+    return i;
+  }
+
+  void addLetter(String letter) {
+    if (letters.length < maxLetters) {
+      keys.add(letters.length);
+      letters.add(letter);
+      _leftGroupLength++;
+    }
+    notifyListeners();
+  }
+
+  void removeLetter(int index) {
+    if (index < letters.length) {
+      letters.removeAt(index);
+      if (index < _leftGroupLength) {
+        _leftGroupLength--;
+      }
+      keys.remove(letters.length);
+    }
+    notifyListeners();
   }
 }
 

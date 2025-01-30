@@ -70,7 +70,7 @@ class BoardState extends ChangeNotifier {
   List<int> _blanks;
   bool _isVertical;
   String _boardType;
-  List<int> _tempLetters;
+  final List<int> _tempLetters;
   List<List<String>> _specialPositions;
 
   BoardState() : 
@@ -134,13 +134,19 @@ class BoardState extends ChangeNotifier {
     'S': 1, 'T': 1, 'U': 2, 'V': 5, 'W': 10, 'X': 8, 'Y': 8, 'Z': 8
   };
 
-int calculatePoints(String word) {
-  int points = 0;
-  for (int i = 0; i < word.length; i++) {
-    points += letterPoints()[word[i].toUpperCase()]!;
+  int calculatePoints(String word) {
+    int points = 0;
+    for (int i = 0; i < word.length; i++) {
+      points += letterPoints()[word[i].toUpperCase()]!;
+    }
+    return points;
   }
-  return points;
-}
+
+  void endDragging (bool wasAccepted, int index) {
+    if (wasAccepted) {
+      removeTemporaryLetter(index);
+    }
+  }
 
   // Setters with notifications
   void setSelectedIndex(int? value) {
