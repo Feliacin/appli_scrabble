@@ -20,10 +20,10 @@ class Tile extends StatelessWidget {
         final isVertical = boardState.isVertical;
         
         final isDirectionIndicator = boardState.selectedIndex != null &&
-          ((isVertical && 
+          ((isVertical &&
             col == boardState.selectedIndex! % BoardState.boardSize && 
             row == (boardState.selectedIndex! ~/ BoardState.boardSize) + 1) ||
-           (!isVertical && 
+           (!isVertical &&
             row == boardState.selectedIndex! ~/ BoardState.boardSize && 
             col == (boardState.selectedIndex! % BoardState.boardSize) + 1));
 
@@ -34,7 +34,7 @@ class Tile extends StatelessWidget {
             return GestureDetector(
               onTap: () => _handleTap(context, boardState, rackState),
               child: DragTarget<DragData>(
-                onWillAccept: (data) => boardState.letters[row][col] == null,
+                onWillAccept: (data) => boardState.letters[row][col] == null, 
                 onAccept: (data) => _handleDragAccept(context, boardState, rackState, data),
                 builder: (context, candidateData, rejectedData) {
                   return Container(
