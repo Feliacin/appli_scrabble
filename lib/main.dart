@@ -56,7 +56,7 @@ class AppState extends ChangeNotifier {
   List<GameSession> get sessions => _sessions;
   bool get isGameMode => _currentSessionIndex != null;
   GameSession? get currentSession => 
-    _currentSessionIndex != null ? _sessions[_currentSessionIndex!] : null;
+  _currentSessionIndex != null ? _sessions[_currentSessionIndex!] : null;
 
   void createNewSession() {
     final session = GameSession();

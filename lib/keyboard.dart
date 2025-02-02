@@ -1,6 +1,7 @@
 import 'package:appli_scrabble/board.dart';
 import 'package:appli_scrabble/rack.dart';
 import 'package:appli_scrabble/tile.dart';
+import 'package:appli_scrabble/useful_classes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,19 +21,19 @@ class Keyboard extends StatelessWidget {
 
       if (letter == ' ') {
         if (boardState.letters[row][col] != null) {
-          boardState.toggleBlank(index);
+          boardState.toggleBlank(Position(row, col));
         }
         return;
       }
       
       // Ajouter la lettre
-      boardState.writeLetter(letter, row, col);
+      boardState.writeLetter(letter, Position(row, col));
 
       // Déplacer la sélection
       if (boardState.isVertical && row < BoardState.boardSize - 1) {
-        boardState.setSelectedIndex((row + 1) * BoardState.boardSize + col);
+        boardState.selectedIndex = (row + 1) * BoardState.boardSize + col;
       } else if (!boardState.isVertical && col < BoardState.boardSize - 1) {
-        boardState.setSelectedIndex(row * BoardState.boardSize + (col + 1));
+        boardState.selectedIndex = row * BoardState.boardSize + (col + 1);
       }
     }
   }
@@ -49,13 +50,13 @@ class Keyboard extends StatelessWidget {
       final col = index % BoardState.boardSize;
       
       // Supprimer la lettre de la case actuelle
-      boardState.removeLetter(row, col);
+      boardState.removeLetter(Position(row, col));
 
       // Déplacer la sélection
       if (boardState.isVertical && row > 0) {
-        boardState.setSelectedIndex((row - 1) * BoardState.boardSize + col);
+        boardState.selectedIndex = (row - 1) * BoardState.boardSize + col;
       } else if (col > 0) {
-        boardState.setSelectedIndex(row * BoardState.boardSize + (col - 1));
+        boardState.selectedIndex = row * BoardState.boardSize + (col - 1);
       }
     }
   }

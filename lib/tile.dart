@@ -1,4 +1,5 @@
 import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/useful_classes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:appli_scrabble/rack.dart';
@@ -86,11 +87,8 @@ class Tile extends StatelessWidget {
     }
   }
 
-  Widget _buildLetterWidget(String letter, BoardState boardState, double tileSize) {
-    final isTemp = boardState.tempLetters.contains(index);
-    final isBlank = boardState.blanks.contains(index);
-    
-    if (isTemp) {
+  Widget _buildLetterWidget(String letter, BoardState boardState, double tileSize) {   
+    if (boardState.isTemp(index)) {
       return Draggable<DragData>(
         data: DragData(
           letter: letter,
@@ -108,7 +106,7 @@ class Tile extends StatelessWidget {
           specialColor: [Colors.amberAccent[100]!, Colors.amberAccent]
         ),
       );
-    } else if (isBlank) {
+    } else if (boardState.isBlank(index)) {
     return buildTile(
         letter,
         tileSize,
@@ -136,7 +134,7 @@ class Tile extends StatelessWidget {
     if (boardState.selectedIndex == index) {
       boardState.toggleVertical();
     } else {
-      boardState.setSelectedIndex(index);
+      boardState.selectedIndex = index;
       rackState.isSelected = false;
     }
   }
@@ -151,7 +149,7 @@ class Tile extends StatelessWidget {
     final col = index % BoardState.boardSize;
     
     if (boardState.letters[row][col] == null) {
-      boardState.addTemporaryLetter(data.letter, row, col);
+      boardState.addTemporaryLetter(data.letter, Position(row, col));
       
       // Retirer la lettre du rack ou de son ancienne position
       if (data.rackIndex != null) {

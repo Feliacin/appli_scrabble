@@ -29,7 +29,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      context.read<BoardState>().saveState();
+      //context.read<BoardState>().saveState();
     }
   }
 
@@ -63,6 +63,112 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildGameControls() {
+    return Consumer<AppState>(
+      builder: (context, appState, _) {
+        final session = appState.currentSession;
+        if (session == null) return const SizedBox.shrink();
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(width: 16),
+            
+            _buildControlButton(
+              icon: Icons.lightbulb_outline,
+              tooltip: 'Obtenir un conseil',
+              onPressed: () {
+                var suggestions = session.boardState
+                    .findWord(session.playerRack.letters);
+                if (suggestions.isNotEmpty) {
+                  final suggestion = suggestions[0];
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Meilleur mot : ${suggestion.points} points',
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
+              },
+            ),
+            const Spacer(),
+            
+            // Dernier mot joué
+            if (session.lastPlayedWord != null)
+              Text(
+                '${session.isPlayerTurn ? 'IA :' : 'Vous :'} ${session.lastPlayedWord!.word.toUpperCase()} (${session.lastPlayedWord!.points} points)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.brown[700],
+                ),
+              ),
+            const Spacer(),
+            
+            _buildControlButton(
+              icon: Icons.refresh,
+              tooltip: 'Récupérer/Mélanger les lettres',
+              onPressed: () {
+                if (session.boardState.tempLetters.isEmpty) {
+                  session.playerRack.shuffle();
+                } else {
+                  session.returnLettersToRack();
+                }
+              },
+            ),
+            const SizedBox(width: 16),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.brown[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: Colors.brown[700]),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildGameArea() {
+    return Consumer<AppState>(
+      builder: (context, appState, _) {
+        final suggestions = appState.wordSuggestions;
+        final isGameMode = appState.currentSession != null;
+        
+        if (suggestions.isNotEmpty) {
+          return Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 160),
+            margin: const EdgeInsets.only(top: 4.0),
+            child: WordSuggestions(),
+          );
+        }
+        
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Rack(),
+            if (!isGameMode) const Keyboard(),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildPortraitLayout() {
     return Column(
       children: [
@@ -71,26 +177,11 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             child: Board(),
           ),
         ),
-        Consumer<AppState>(
-          builder: (context, appState, _) {
-            final suggestions = appState.wordSuggestions;
-            final isGameMode = appState.currentSession != null;
-            return suggestions.isNotEmpty
-              ? Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(maxHeight: 160),
-                  margin: const EdgeInsets.only(top: 4.0),
-                  child: WordSuggestions(),
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Rack(),
-                    !isGameMode ? const Keyboard() : const SizedBox.shrink(),
-                  ],
-                );
-          }
-        )
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: _buildGameControls(),
+        ),
+        _buildGameArea(),
       ],
     );
   }
@@ -107,23 +198,17 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             ),
           ),
         ),
-        Consumer<AppState>(
-          builder: (context, appState, _) {
-            final suggestions = appState.wordSuggestions;
-            return Container(
-              width: 360,
-              padding: const EdgeInsets.only(left: 8.0),
-              child: suggestions.isNotEmpty
-                ? WordSuggestions()
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Rack(),
-                      !appState.isGameMode ? const Keyboard() : const SizedBox.shrink(),
-                    ],
-                  ),
-            );
-          }
+        Container(
+          width: 360,
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildGameControls(),
+              const SizedBox(height: 16),
+              _buildGameArea(),
+            ],
+          ),
         ),
       ],
     );
@@ -175,9 +260,9 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             ? Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildScoreDisplay("Vous", session.playerScore, true),
+                  _buildScoreDisplay("Vous", session.playerScore, session.isPlayerTurn),
                   const SizedBox(width: 24),
-                  _buildScoreDisplay("IA", session.computerScore, false),
+                  _buildScoreDisplay("IA", session.computerScore, !session.isPlayerTurn),
                 ],
               )
             : Row(
@@ -193,9 +278,8 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
                         icon: const Icon(Icons.search, color: Colors.white),
                         tooltip: 'Trouver les possibilités',
                         onPressed: () {
-                          context.read<BoardState>().findWord(
-                            rackState.letters.whereType<String>().toList(),
-                            context.read<AppState>(),
+                          appState.setWordSuggestions(
+                            context.read<BoardState>().findWord(rackState.letters)
                           );
                         },
                       );
@@ -208,6 +292,50 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
       toolbarHeight: 48,
       elevation: 2,
       centerTitle: false,
+      actions: [
+      Consumer2<AppState, BoardState>(
+        builder: (context, appState, boardState, child) {
+          final session = appState.currentSession;
+          // Vérifier si l’on est en mode partie
+          if (session == null) return const SizedBox.shrink();
+
+          // Déterminer si le joueur a déposé des lettres
+          bool hasPlacedLetters = boardState.tempLetters.isNotEmpty;
+          bool isPlayerTurn = session.isPlayerTurn;
+          final placedWord = boardState.placedWord;
+          return IconButton(
+            icon: Icon(
+              !isPlayerTurn
+                ? Icons.play_arrow  // Tour de l'ordinateur
+                : hasPlacedLetters
+                  ? (placedWord != null
+                      ? Icons.check  // Mot valide
+                      : Icons.error) // Mot invalide
+                  : Icons.skip_next, // Passer son tour
+              color: !isPlayerTurn || (hasPlacedLetters && placedWord == null)
+                  ? Colors.grey
+                  : Colors.white,
+            ),
+            tooltip: !isPlayerTurn
+                ? 'Faire jouer l\'ordinateur'
+                : hasPlacedLetters
+                    ? (placedWord != null ? 'Valider le mot' : 'Mot invalide')
+                    : 'Passer le tour',
+            onPressed: !isPlayerTurn
+                ? () {
+                    session.computerPlays();
+                    setState(() {});
+                  }
+                : hasPlacedLetters && placedWord != null
+                    ? () {
+                        session.playerPlays(placedWord);
+                        setState(() {});
+                      }
+                    : null,
+          );
+        },
+      ),
+    ],
     );
   }
 

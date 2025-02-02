@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 class WordSuggestions extends StatefulWidget {
   const WordSuggestions({super.key});
+  static const number = 10;
 
   @override
   State<WordSuggestions> createState() => _WordSuggestionsState();
@@ -30,10 +31,8 @@ class _WordSuggestionsState extends State<WordSuggestions> {
     final boardState = context.read<BoardState>();
     
     // Restaurer l'état précédent
-    boardState.setLetters(
-      List.from(backupLetters.map((row) => List<String?>.from(row)))
-    );
-    boardState.setBlanks(List.from(backupBlanks));
+    boardState.letters = List.from(backupLetters.map((row) => List<String?>.from(row)));
+    boardState.blanks = List.from(backupBlanks);
     
     setState(() {
       if (selectedWord == word) {
@@ -47,6 +46,7 @@ class _WordSuggestionsState extends State<WordSuggestions> {
 
   void _handleValidate(BuildContext context) {
     context.read<AppState>().clearWordSuggestions();
+    context.read<BoardState>().tempLetters = [];
     setState(() {
       selectedWord = null;
     });
@@ -55,10 +55,8 @@ class _WordSuggestionsState extends State<WordSuggestions> {
   void _handleCancel(BuildContext context) {
   final boardState = context.read<BoardState>();
   
-    boardState.setLetters(
-      List.from(backupLetters.map((row) => List<String?>.from(row)))
-    );
-    boardState.setBlanks(List.from(backupBlanks));
+    boardState.letters = List.from(backupLetters.map((row) => List<String?>.from(row)));
+    boardState.blanks = List.from(backupBlanks);
     
     setState(() {
       selectedWord = null;

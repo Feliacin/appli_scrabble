@@ -118,7 +118,7 @@ class Rack extends StatelessWidget {
         ? () => rackState._clickLetter(index)
         : () {
             rackState.isSelected = true;
-            context.read<BoardState>().setSelectedIndex(null);
+            context.read<BoardState>().selectedIndex = null;
           },
       child: Draggable<DragData>(
         data: DragData(
@@ -155,6 +155,11 @@ class RackState extends ChangeNotifier {
   bool get isSelected => _isSelected;
   set isSelected(bool value) {
     _isSelected = value;
+    notifyListeners();
+  }
+
+  void shuffle() {
+    letters.shuffle();
     notifyListeners();
   }
 

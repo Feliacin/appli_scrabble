@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:appli_scrabble/main.dart';
-import 'package:appli_scrabble/rack.dart';
 import 'package:appli_scrabble/useful_classes.dart';
+import 'package:appli_scrabble/wordsuggestions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:appli_scrabble/tile.dart';
@@ -67,11 +68,12 @@ class BoardState extends ChangeNotifier {
 
   int? _selectedIndex;
   List<List<String?>> _letters;
-  List<int> _blanks;
+  List<Position> _blanks;
   bool _isVertical;
   String _boardType;
-  final List<int> _tempLetters;
+  List<Position> _tempLetters;
   List<List<String>> _specialPositions;
+  List<List<PossibleLetters>> possibleLetters;
 
   BoardState() : 
     _letters = List.generate(boardSize, (_) => List.filled(boardSize, null)),
@@ -79,16 +81,43 @@ class BoardState extends ChangeNotifier {
     _isVertical = false,
     _boardType = 'scrabble',
     _tempLetters = [],
-    _specialPositions = _initializeSpecialPositions('scrabble');
+    _specialPositions = _initializeSpecialPositions('scrabble'),
+    possibleLetters = List.generate(boardSize, (_) => List.generate(boardSize, (_) => PossibleLetters()));
 
   // Getters
   int? get selectedIndex => _selectedIndex;
   List<List<String?>> get letters => _letters;
-  List<int> get blanks => _blanks;
   bool get isVertical => _isVertical;
   String get boardType => _boardType;
-  List<int> get tempLetters => _tempLetters;
   List<List<String>> get specialPositions => _specialPositions;
+  List<Position> get blanks => _blanks;
+  List<Position> get tempLetters => _tempLetters;
+  Position get center => Position(boardSize ~/ 2, boardSize ~/ 2);
+  bool get isFirstTurn => _letters[center.row][center.col] == null || isTemp(center.index);
+
+  // Setters
+  set boardType(String value) {
+    _boardType = value;
+    _specialPositions = _initializeSpecialPositions(value);
+    notifyListeners();
+  }
+  set letters(List<List<String?>> newLetters) {
+    _letters = newLetters;
+    notifyListeners();
+  }
+  set blanks(List<Position> newBlanks) {
+    _blanks = newBlanks;
+    notifyListeners();
+  }
+  set selectedIndex(int? value) {
+    _selectedIndex = value;
+    notifyListeners();
+  }
+  set tempLetters(List<Position> newTempLetters) {
+    _tempLetters = newTempLetters;
+    notifyListeners();
+  }
+  //
 
   static List<List<String>> _initializeSpecialPositions(String type) {
     final List<List<String>> positions =
@@ -122,36 +151,22 @@ class BoardState extends ChangeNotifier {
     return positions;
   }
 
-  Map<String, int> letterPoints() => boardType == 'scrabble' 
+  Map<String, int> get letterPoints => boardType == 'scrabble' 
   ?  {
-    'A': 1, 'B': 3, 'C': 3, 'D': 2, 'E': 1, 'F': 4, 'G': 2, 'H': 4, 'I': 1,
-    'J': 8, 'K': 10, 'L': 1, 'M': 2, 'N': 1, 'O': 1, 'P': 3, 'Q': 8, 'R': 1,
-    'S': 1, 'T': 1, 'U': 1, 'V': 4, 'W': 10, 'X': 10, 'Y': 10, 'Z': 10
-  }
-  : {
-    'A': 1, 'B': 5, 'C': 3, 'D': 4, 'E': 1, 'F': 5, 'G': 4, 'H': 5, 'I': 1,
-    'J': 7, 'K': 10, 'L': 2, 'M': 3, 'N': 1, 'O': 1, 'P': 4, 'Q': 7, 'R': 1,
-    'S': 1, 'T': 1, 'U': 2, 'V': 5, 'W': 10, 'X': 8, 'Y': 8, 'Z': 8
-  };
-
-  int calculatePoints(String word) {
-    int points = 0;
-    for (int i = 0; i < word.length; i++) {
-      points += letterPoints()[word[i].toUpperCase()]!;
+    'a': 1, 'b': 3, 'c': 3, 'd': 2, 'e': 1, 'f': 4, 'g': 2, 'h': 4, 'i': 1,
+    'j': 8, 'k': 10, 'l': 1, 'm': 2, 'n': 1, 'o': 1, 'p': 3, 'q': 8, 'r': 1,
+    's': 1, 't': 1, 'u': 1, 'v': 4, 'w': 10, 'x': 10, 'y': 10, 'z': 10
     }
-    return points;
-  }
+    : {
+    'a': 1, 'b': 5, 'c': 3, 'd': 4, 'e': 1, 'f': 5, 'g': 4, 'h': 5, 'i': 1,
+    'j': 7, 'k': 10, 'l': 2, 'm': 3, 'n': 1, 'o': 1, 'p': 4, 'q': 7, 'r': 1,
+    's': 1, 't': 1, 'u': 2, 'v': 5, 'w': 10, 'x': 8, 'y': 8, 'z': 8
+    };
 
   void endDragging (bool wasAccepted, int index) {
     if (wasAccepted) {
-      removeTemporaryLetter(index);
+      removeTemporaryLetter(Position.fromIndex(index));
     }
-  }
-
-  // Setters with notifications
-  void setSelectedIndex(int? value) {
-    _selectedIndex = value;
-    notifyListeners();
   }
 
   void toggleVertical() {
@@ -159,51 +174,41 @@ class BoardState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleBlank(int index) {
-    if (_blanks.contains(index)) {
-      _blanks.remove(index);
+  void toggleBlank(Position position) {
+    if (_blanks.contains(position)) {
+      _blanks.remove(position);
     } else {
-      _blanks.add(index);
+      _blanks.add(position);
     }
   }
 
-  void setBoardType(String value) {
-    _boardType = value;
-    _specialPositions = _initializeSpecialPositions(value);
+  bool isBlank(index) => _blanks.contains(Position.fromIndex(index));
+
+  void writeLetter(String letter, Position pos) {
+    _letters[pos.row][pos.col] = letter;
     notifyListeners();
   }
 
-  void setLetters(List<List<String?>> newLetters) {
-    _letters = newLetters;
+  void removeLetter(Position pos){
+    _letters[pos.row][pos.col] = null;
     notifyListeners();
   }
 
-  void setBlanks(List<int> newBlanks) {
-    _blanks = newBlanks;
+  void addTemporaryLetter(String letter, Position pos) {
+    letters[pos.row][pos.col] = letter;
+    _tempLetters.add(pos);
     notifyListeners();
   }
 
-  void writeLetter(String letter, int i, int j) {
-    _letters[i][j] = letter;
+  void removeTemporaryLetter(Position pos) {
+    letters[pos.row][pos.col] = null;
+    _tempLetters.remove(pos);
     notifyListeners();
   }
 
-  void removeLetter(int i, int j){
-    _letters[i][j] = null;
-    notifyListeners();
-  }
+  bool isTemp(int index) => _tempLetters.contains(Position.fromIndex(index));
 
-  void addTemporaryLetter(String letter, int row, int col) {
-    letters[row][col] = letter;
-    tempLetters.add(row * boardSize + col);
-    notifyListeners();
-  }
-
-  void removeTemporaryLetter(int index) {
-    letters[index ~/ boardSize][index % boardSize] = null;
-    tempLetters.remove(index);
-    notifyListeners();
-  }
+  void updatePossibleLetters() => possibleLetters = PossibleLetters.scan(this);
 
   void reset() {
     _letters = List.generate(boardSize, (_) => List.filled(boardSize, null));
@@ -213,15 +218,15 @@ class BoardState extends ChangeNotifier {
   }
 
   void place(PlayableWord playableWord) {
-    for (int i = 0; i < playableWord.word.length; i++) {
+    for (int i = 0; i < playableWord.length; i++) {
       playableWord.isHorizontal
         ? letters[playableWord.row][playableWord.col + i] = playableWord.word[i]
         : letters[playableWord.row + i][playableWord.col] = playableWord.word[i];
     }
     for (int blankPosition in playableWord.blankPositions) {
       playableWord.isHorizontal
-        ? blanks.add(playableWord.row * boardSize + playableWord.col + blankPosition)
-        : blanks.add((playableWord.row + blankPosition) * boardSize + playableWord.col);
+        ? blanks.add(Position(playableWord.row, playableWord.col + blankPosition))
+        : blanks.add(Position(playableWord.row + blankPosition, playableWord.col));
     }
     notifyListeners();
   }
@@ -255,7 +260,7 @@ class BoardState extends ChangeNotifier {
     final String? blanksJson = prefs.getString(_blanksKey);
     if (blanksJson != null) {
       final List<dynamic> decodedBlanks = jsonDecode(blanksJson);
-      _blanks = decodedBlanks.map((e) => e as int).toList();
+      //_blanks = decodedBlanks.map((e) => e as int).toList();
     }
 
     final String? savedBoardType = prefs.getString(_boardTypeKey);
@@ -267,12 +272,12 @@ class BoardState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void findWord(List<String> rack, AppState appState) {
-    if (rack.isEmpty) return;
+  List<PlayableWord> findWord(List<String> rack) {
+    if (rack.isEmpty) return [];
     
-    List<List<PossibleLetters>> possibleLetters = PossibleLetters.scan(this);
+    possibleLetters = PossibleLetters.scan(this);
     List<int> connections;
-    var bestWords = BestWords(10);
+    var bestWords = BestWords(WordSuggestions.number);
     int middle = boardSize ~/ 2;
     
     if (letters[middle][middle] == null) { // Premier mot
@@ -298,8 +303,7 @@ class BoardState extends ChangeNotifier {
       }
     }
     
-    // Mise à jour des suggestions de mots
-    appState.setWordSuggestions(bestWords.words);
+    return bestWords.words;
   }
 
   void findWordOnLine(
@@ -310,24 +314,17 @@ class BoardState extends ChangeNotifier {
     List<int> connections,
     BestWords bestWords
   ) {
-    int position, points, extra, factor, playedLettersCount;
-    bool isBlank;
+    int position;
     List<String?> lettersLine;
-    List<String> specialPositionsLine;
     List<PossibleLetters> possibleLettersLine;
-    List<int> blanksPlaced;
     List<List<int>> possiblePositions = List.generate(boardSize + 1, (_) => []);
 
     if (isRow) {
       lettersLine = extractRow(letters, index);
-      specialPositionsLine = extractRow(specialPositions, index);
       possibleLettersLine = extractRow(possibleLettersTable, index);
-      blanksPlaced = blanks.where((i) => i ~/ boardSize == index).map((i) => i % boardSize).toList();
     } else {
       lettersLine = extractColumn(letters, index);
-      specialPositionsLine = extractColumn(specialPositions, index);
       possibleLettersLine = extractColumn(possibleLettersTable, index);
-      blanksPlaced = blanks.where((i) => i % boardSize == index).map((i) => i ~/ boardSize).toList();
     }
 
     // Pré-calcul des positions possibles
@@ -355,52 +352,141 @@ class BoardState extends ChangeNotifier {
             lettersLine.sublist(position, position + wordLength),
             possibleLettersLine.sublist(position, position + wordLength).map((possibleLetters) => possibleLetters.get(!isRow)).toList())
             ) {
-          // Calcul des points
-          points = 0;
-          extra = 0;
-          playedLettersCount = 0;
-          String word = playableWord.word;
-          for (int k = 0; k < word.length; k++) {
-            if(lettersLine[position + k] != null) {
-              if (!blanksPlaced.contains(position + k)) {
-                points += calculatePoints(word[k]);
-              }
-              continue;
-            }
-            playedLettersCount++;
-            isBlank = playableWord.blankPositions.contains(k);
-            if (possibleLettersLine[position + k].get(!isRow) != null) {
-              int index = possibleLettersLine[position + k].get(!isRow)!.indexOf(word[k]);
-              extra += possibleLettersLine[position + k].getPoints(!isRow)![index];
-              factor = {'TL': 3, 'DL': 2, 'TW': 3, 'DW': 2}[specialPositionsLine[position + k]] ?? 1;
-              extra -= isBlank ? factor * calculatePoints(word[k]) : 0;
-            }
-            factor = {'TL': 3, 'DL': 2}[specialPositionsLine[position + k]] ?? 1;
-            points += !isBlank ? factor * calculatePoints(word[k]) : 0;
-          }
-          for (int k=0; k<word.length; k++) {
-            if (lettersLine[position + k] != null) continue;
-            if (specialPositionsLine[position + k] == 'DW') {
-              points *= 2;
-            } else if (specialPositionsLine[position + k] == 'TW') {
-              points *= 3;
-            }
-          }
-          points += extra;
-          if (playedLettersCount == RackState.maxLetters) {
-            points += boardType == 'scrabble' ? 50 : 49; // Bonus pour avoir utilisé toutes les lettres
-          }
-
-          // Comparaison avec les meilleurs mots
-          if (bestWords.accepts(points)) {
-            playableWord.points = points;
-            isRow
+            
+          isRow
               ? playableWord.setPosition(index, position, true)
               : playableWord.setPosition(position, index, false);
+          playableWord.calculatePoints(this);
+
+          // Comparaison avec les meilleurs mots
+          if (bestWords.accepts(playableWord.points)) {
             bestWords.add(playableWord);
           }
         }
       }
     }
+  }
+
+  // Lecture des mots posés sur le plateau
+  PlayableWord? get placedWord {
+    if (_tempLetters.isEmpty) return null;
+
+    // Déterminer l'orientation
+    int i = _tempLetters[0].row;
+    int j = _tempLetters[0].col;
+    bool isHorizontal;
+
+    if (_tempLetters.length == 1) {
+      // Pour une seule lettre, vérifier les deux directions possibles
+      String letter = letters[i][j]!;
+      bool horizontalPossible = possibleLetters[i][j].get(true)?.contains(letter) ?? false;
+      bool verticalPossible = possibleLetters[i][j].get(false)?.contains(letter) ?? false;
+
+      if (horizontalPossible && !verticalPossible) {
+        isHorizontal = true;
+      } else if (!horizontalPossible && verticalPossible) {
+        isHorizontal = false;
+      } else if (horizontalPossible && verticalPossible) {
+        // Si les deux directions sont possibles, choisir celle qui forme le mot le plus long
+        String horizontalWord = _getWordAt(_findStartPosition(i, j, true), true);
+        String verticalWord = _getWordAt(_findStartPosition(i, j, false), false);
+        isHorizontal = horizontalWord.length >= verticalWord.length;
+      } else {
+        return null;
+      }
+    } else {
+      isHorizontal = _tempLetters[0].row == _tempLetters[1].row;
+    }
+
+    if (!_checkAlignment(isHorizontal)) {
+      return null;
+    }
+
+    Position startPos = _findStartPosition(i, j, isHorizontal);
+
+    // Créer et configurer le mot jouable
+    PlayableWord placedWord = PlayableWord(_getWordAt(startPos, isHorizontal), []);
+    placedWord.setPosition(startPos.row, startPos.col, isHorizontal);
+
+    if (_isValidWord(placedWord)) {
+      placedWord.calculatePoints(this);
+      return placedWord;
+    }
+
+    return null;
+  }
+
+  bool _checkAlignment(bool isHorizontal) {
+    int reference = isHorizontal ? _tempLetters[0].row : _tempLetters[0].col;
+    
+    // Vérifier que toutes les lettres sont sur la même ligne/colonne
+    if (!_tempLetters.every((pos) => 
+        (isHorizontal ? pos.row : pos.col) == reference)) {
+      return false;
+    }
+
+    // Vérifier la continuité des lettres
+    List<int> positions = _tempLetters
+        .map((pos) => isHorizontal ? pos.col : pos.row)
+        .toList();
+    int minPos = positions.fold(boardSize, min);
+    int maxPos = positions.fold(0, max);
+
+    for (int k = minPos; k <= maxPos; k++) {
+      if (letters[isHorizontal ? reference : k][isHorizontal ? k : reference] == null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Position _findStartPosition(int i, int j, bool isHorizontal) {
+    int pos = isHorizontal ? j : i;
+    for (pos; pos>0 && letters[isHorizontal ? i : pos-1][isHorizontal ? pos-1 : j] != null; pos--) {}
+    return isHorizontal ? Position(i, pos) : Position(pos, j);
+  }
+
+  String _getWordAt(Position startPos, bool horizontal) {
+    List<String> word = [];
+    int pos = horizontal ? startPos.col : startPos.row;
+    
+    while (pos < boardSize && letters[horizontal ? startPos.row : pos][horizontal ? pos : startPos.col] != null) {
+      word.add(letters[horizontal ? startPos.row : pos][horizontal ? pos : startPos.col]!);
+      pos++;
+    }
+    
+    return word.join();
+  }
+
+  bool _isValidWord(PlayableWord placedWord) {
+    // Vérifier la connexion avec les lettres existantes ou la case centrale
+    bool hasConnection = false;
+    if (isFirstTurn) {
+      if (_tempLetters.length < 2 || !isTemp(center.index)) {
+        return false;
+      } else {
+        hasConnection = true;
+      }
+    }
+
+    if (!MainApp.dictionary.exists(placedWord.word)) {
+      return false;
+    }
+
+    // Vérifier les contraintes pour chaque lettre placée
+    for (Position pos in _tempLetters) {
+      var possibilities = possibleLetters[pos.row][pos.col].get(!placedWord.isHorizontal);
+      if (possibilities != null) {
+        if (possibilities.contains(letters[pos.row][pos.col])) {
+          hasConnection = true;
+        } else {
+          return false;
+        }
+      }
+      if (!hasConnection && possibleLetters[pos.row][pos.col].get(placedWord.isHorizontal) != null) {
+        hasConnection = true;
+      }
+    }
+    return hasConnection;
   }
 }

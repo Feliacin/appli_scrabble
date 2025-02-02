@@ -2,39 +2,61 @@
 
 import 'package:appli_scrabble/board.dart';
 import 'package:appli_scrabble/main.dart';
+import 'package:appli_scrabble/rack.dart';
 import 'package:flutter/services.dart';
 
+class Position {
+  final int row;
+  final int col;
+
+  Position(this.row, this.col);
+  Position.fromIndex(int index)
+      : row = index ~/ BoardState.boardSize,
+        col = index % BoardState.boardSize;
+
+  int get index => row * BoardState.boardSize + col;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Position && other.row == row && other.col == col);
+
+  @override
+  int get hashCode => Object.hash(row, col);
+}
+
 class PossibleLetters {
-  List<String>? verticalPossibilities;
-  List<String>? horizontalPossibilities;
-  List<int>? verticalPoints;
-  List<int>? horizontalPoints;
+  List<String>? _verticalPossibilities;
+  List<String>? _horizontalPossibilities;
+  List<int>? _verticalPoints;
+  List<int>? _horizontalPoints;
   
-  List<String>? get(bool isHorizontal) {
-    return isHorizontal ? horizontalPossibilities : verticalPossibilities;
+  List<String>? get(bool isHorizontal) { // Renvoie les lettres possibles
+    return isHorizontal ? _horizontalPossibilities : _verticalPossibilities;
   }
 
-  List<int>? getPoints(bool isHorizontal) {
-    return isHorizontal ? horizontalPoints : verticalPoints;
+  int getPoints(String letter, bool isHorizontal) { // Renvoie les points d'une lettre possible
+    final index = get(isHorizontal)!.indexOf(letter);
+    return isHorizontal ? _horizontalPoints![index] : _verticalPoints![index];
   }
 
-  void open(bool isHorizontal) {
+  void _open(bool isHorizontal) {
     if (isHorizontal) {
-      horizontalPossibilities = [];
-      horizontalPoints = [];
+      _horizontalPossibilities = [];
+      _horizontalPoints = [];
     } else {
-      verticalPossibilities = [];
-      verticalPoints = [];
+      _verticalPossibilities = [];
+      _verticalPoints = [];
     }
   }
 
-  void add(String character, int points, bool isHorizontal) {
+  void _add(String character, int points, bool isHorizontal) {
     if (isHorizontal) {
-      horizontalPossibilities!.add(character);
-      horizontalPoints!.add(points);
+      _horizontalPossibilities!.add(character);
+      _horizontalPoints!.add(points);
     } else {
-      verticalPossibilities!.add(character);
-      verticalPoints!.add(points);
+      _verticalPossibilities!.add(character);
+      _verticalPoints!.add(points);
     }
   }
 
@@ -65,7 +87,7 @@ class PossibleLetters {
           if (lettersBefore+lettersAfter == 0) { // Pas de lettre autour
             continue;
           }
-          possibleLetters[i][j].open(isHorizontal);
+          possibleLetters[i][j]._open(isHorizontal);
           for (int charCode = 'a'.codeUnitAt(0); charCode <= 'z'.codeUnitAt(0); charCode++) {
             String char = String.fromCharCode(charCode);
             var proposal = StringBuffer();
@@ -81,15 +103,15 @@ class PossibleLetters {
               }
             }
             if (MainApp.dictionary.exists(proposal.toString())) {
-              int points = boardState.calculatePoints(proposal.toString());
-              for (int blank in boardState.blanks) {
+              int points = proposal.toString().split('').map((char) => boardState.letterPoints[char]!).reduce((a, b) => a + b);
+              for (Position blank in boardState.blanks) {
                 if (isHorizontal) {
-                  if (i * BoardState.boardSize + j - lettersBefore <= blank && blank <= i * BoardState.boardSize + j + lettersAfter) {
-                    points -= boardState.calculatePoints(proposal.toString()[blank % BoardState.boardSize - (j - lettersBefore)]);
+                  if (blank.row == i && blank.col >= j - lettersBefore && blank.col >= j + lettersAfter) {
+                    points -= boardState.letterPoints[proposal.toString()[blank.col - (j - lettersBefore)]]!;
                   }
                 } else {
-                  if ((blank-j) % BoardState.boardSize == 0 && blank ~/ BoardState.boardSize >= i - lettersBefore && blank ~/ BoardState.boardSize <= i + lettersAfter) {
-                    points -= boardState.calculatePoints(proposal.toString()[blank ~/ BoardState.boardSize - (i - lettersBefore)]);
+                  if (blank.col == j && blank.row >= i - lettersBefore && blank.row <= i + lettersAfter) {
+                    points -= boardState.letterPoints[proposal.toString()[blank.row - (i - lettersBefore)]]!;
                   }
                 }
               }
@@ -101,13 +123,13 @@ class PossibleLetters {
                   points *= 2;
                   break;
                 case 'TL':
-                  points += boardState.calculatePoints(char) * 2;
+                  points += boardState.letterPoints[char]! * 2;
                   break;
                 case 'DL':
-                  points += boardState.calculatePoints(char);
+                  points += boardState.letterPoints[char]!;
                   break;
               }
-              possibleLetters[i][j].add(char, points, isHorizontal);
+              possibleLetters[i][j]._add(char, points, isHorizontal);
             }
           }
         }
@@ -118,7 +140,7 @@ class PossibleLetters {
 }
 
 class PlayableWord {
-  String word;
+  final String word;
   List<int> blankPositions;
   int row;
   int col;
@@ -127,10 +149,74 @@ class PlayableWord {
 
   PlayableWord(this.word,  this.blankPositions, {this.row = -1, this.col = -1, this.isHorizontal = true, this.points = 0});
 
+  // Déléguer les méthodes de String
+  int get length => word.length;
+  String operator [](int index) => word[index];
+
   void setPosition(int row, int col, bool isHorizontal) {
     this.row = row;
     this.col = col;
     this.isHorizontal = isHorizontal;
+  }
+
+  void calculatePoints (BoardState boardState) {
+    points = 0;
+    bool isBlank;
+    int extra = 0, playedLettersCount = 0, factor;
+    List<String?> lettersLine;
+    List<String> specialPositionsLine;
+    List<PossibleLetters> possibleLettersLine;
+    List<int> blanksPlaced;
+
+    if (isHorizontal) {
+      lettersLine = extractRow(boardState.letters, row, from: col);
+      boardState.tempLetters.where((l) => l.row == row && l.col >= col)
+                            .forEach((l) => lettersLine[l.col - col] = null);
+      specialPositionsLine = extractRow(boardState.specialPositions, row, from: col);
+      possibleLettersLine = extractRow(boardState.possibleLetters, row, from: col);
+      blanksPlaced = boardState.blanks.where((blank) => blank.row == row && blank.col >= col)
+                                      .map((blank) => blank.col - col)
+                                      .toList();
+    } else {
+      lettersLine = extractColumn(boardState.letters, col, from: row);
+      boardState.tempLetters.where((l) => l.col == col && l.row >= row)
+                            .forEach((l) => lettersLine[l.row - row] = null);
+      specialPositionsLine = extractColumn(boardState.specialPositions, col, from: row);
+      possibleLettersLine = extractColumn(boardState.possibleLetters, col, from: row);
+      blanksPlaced = boardState.blanks.where((blank) => blank.col == col)
+                                      .map((blank) => blank.row - row)
+                                      .toList();
+    }
+
+    for (int k = 0; k < word.length; k++) {
+      if(lettersLine[k] != null) {
+        if (!blanksPlaced.contains(k)) {
+          points += boardState.letterPoints[word[k]]!;
+        }
+        continue;
+      }
+      playedLettersCount++;
+      isBlank = blankPositions.contains(k);
+      if (possibleLettersLine[k].get(!isHorizontal) != null) {
+        extra += possibleLettersLine[k].getPoints(word[k], !isHorizontal);
+        factor = {'TL': 3, 'DL': 2, 'TW': 3, 'DW': 2}[specialPositionsLine[k]] ?? 1;
+        extra -= isBlank ? factor * boardState.letterPoints[word[k]]! : 0;
+      }
+      factor = {'TL': 3, 'DL': 2}[specialPositionsLine[k]] ?? 1;
+      points += !isBlank ? factor * boardState.letterPoints[word[k]]! : 0;
+    }
+    for (int k=0; k<word.length; k++) {
+      if (lettersLine[k] != null) continue;
+      if (specialPositionsLine[k] == 'DW') {
+        points *= 2;
+      } else if (specialPositionsLine[k] == 'TW') {
+        points *= 3;
+      }
+    }
+    points += extra;
+    if (playedLettersCount == RackState.maxLetters) {
+      points += boardState.boardType == 'scrabble' ? 50 : 49; // Bonus pour avoir utilisé toutes les lettres
+    }
   }
 }
 
@@ -159,18 +245,18 @@ class BestWords {
   }
 }
 
-List<T> extractRow<T>(List<List<T>> table, int rowIndex) {
+List<T> extractRow<T>(List<List<T>> table, int rowIndex, {int from = 0}) {
   if (rowIndex < 0 || rowIndex >= table.length) {
     throw RangeError("Index en dehors des limites");
   }
-  return table[rowIndex];
+  return table[rowIndex].skip(from).toList();
 }
 
-List<T> extractColumn<T>(List<List<T>> table, int columnIndex) {
+List<T> extractColumn<T>(List<List<T>> table, int columnIndex, {int from = 0}) {
   if (table.isEmpty || columnIndex < 0 || columnIndex >= table[0].length) {
     throw RangeError("Index en dehors des limites");
   }
-  return table.map((row) => row[columnIndex]).toList();
+  return table.map((row) => row[columnIndex]).skip(from).toList();
 }
 
 class TrieNode {
