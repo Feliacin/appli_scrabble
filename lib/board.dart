@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:appli_scrabble/main.dart';
@@ -7,7 +6,6 @@ import 'package:appli_scrabble/wordsuggestions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:appli_scrabble/tile.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class Board extends StatelessWidget {
   const Board({super.key});
@@ -62,9 +60,6 @@ class Board extends StatelessWidget {
 
 class BoardState extends ChangeNotifier {
   static const int boardSize = 15;
-  static const String _lettersKey = 'board_letters';
-  static const String _blanksKey = 'board_blanks';
-  static const String _boardTypeKey = 'board_type';
 
   int? _selectedIndex;
   List<List<String?>> _letters;
@@ -166,6 +161,7 @@ class BoardState extends ChangeNotifier {
   void endDragging (bool wasAccepted, int index) {
     if (wasAccepted) {
       removeTemporaryLetter(Position.fromIndex(index));
+      removeBlank(Position.fromIndex(index));
     }
   }
 
@@ -180,6 +176,12 @@ class BoardState extends ChangeNotifier {
     } else {
       _blanks.add(position);
     }
+    notifyListeners();
+  }
+
+  void removeBlank(Position position) {
+    _blanks.remove(position);
+    notifyListeners();
   }
 
   bool isBlank(index) => _blanks.contains(Position.fromIndex(index));
@@ -228,47 +230,6 @@ class BoardState extends ChangeNotifier {
         ? blanks.add(Position(playableWord.row, playableWord.col + blankPosition))
         : blanks.add(Position(playableWord.row + blankPosition, playableWord.col));
     }
-    notifyListeners();
-  }
-
-  // State persistence
-  Future<void> saveState() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    final List<List<String>> serializedLetters = _letters.map((row) {
-      return row.map((letter) => letter ?? '').toList();
-    }).toList();
-    
-    await prefs.setString(_lettersKey, jsonEncode(serializedLetters));
-    await prefs.setString(_blanksKey, jsonEncode(_blanks));
-    await prefs.setString(_boardTypeKey, _boardType);
-  }
-
-  Future<void> restoreState() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final String? lettersJson = prefs.getString(_lettersKey);
-    if (lettersJson != null) {
-      final List<dynamic> decodedLetters = jsonDecode(lettersJson);
-      _letters = decodedLetters.map((row) {
-        return (row as List<dynamic>).map((letter) {
-          return letter == '' ? null : letter as String;
-        }).toList();
-      }).toList();
-    }
-
-    final String? blanksJson = prefs.getString(_blanksKey);
-    if (blanksJson != null) {
-      final List<dynamic> decodedBlanks = jsonDecode(blanksJson);
-      //_blanks = decodedBlanks.map((e) => e as int).toList();
-    }
-
-    final String? savedBoardType = prefs.getString(_boardTypeKey);
-    if (savedBoardType != null) {
-      _boardType = savedBoardType;
-      _specialPositions = _initializeSpecialPositions(savedBoardType);
-    }
-
     notifyListeners();
   }
 
@@ -489,4 +450,26 @@ class BoardState extends ChangeNotifier {
     }
     return hasConnection;
   }
+
+  // Sauvegarde et restauration de l'état
+  Map<String, dynamic> toJson() {
+    return {
+      'letters': _letters.map((row) => row.map((letter) => letter ?? '').toList()).toList(),
+      'blanks': _blanks.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
+      'boardType': _boardType,
+    };
+  }
+
+  BoardState.fromJson(Map<String, dynamic> json)
+    : _letters = (json['letters'] as List).map((row) =>
+        (row as List).map((letter) => letter == '' ? null : letter as String).toList()).toList(),
+      _blanks = (json['blanks'] as List).map((e) => Position(e['row'], e['col'])).toList(),
+      _isVertical = false,
+      _tempLetters = [],
+      _boardType = json['boardType'],
+      _specialPositions = _initializeSpecialPositions(json['boardType']),
+      possibleLetters = [] {
+      possibleLetters = PossibleLetters.scan(this);
+  }
+
 }

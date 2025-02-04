@@ -1,4 +1,5 @@
 import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/keyboard.dart';
 import 'package:appli_scrabble/useful_classes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -14,19 +15,15 @@ class Tile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<BoardState, RackState>(
       builder: (context, boardState, rackState, _) {
-        final row = index ~/ BoardState.boardSize;
-        final col = index % BoardState.boardSize;
-        final letter = boardState.letters[row][col];
+        final pos = Position.fromIndex(index);
+        final selectedPosition = Position.fromIndex(boardState.selectedIndex ?? 0);
+        final letter = boardState.letters[pos.row][pos.col];
         final isSelected = boardState.selectedIndex == index;
         final isVertical = boardState.isVertical;
         
         final isDirectionIndicator = boardState.selectedIndex != null &&
-          ((isVertical &&
-            col == boardState.selectedIndex! % BoardState.boardSize && 
-            row == (boardState.selectedIndex! ~/ BoardState.boardSize) + 1) ||
-           (!isVertical &&
-            row == boardState.selectedIndex! ~/ BoardState.boardSize && 
-            col == (boardState.selectedIndex! % BoardState.boardSize) + 1));
+          ((isVertical && pos.col == selectedPosition.col && pos.row == selectedPosition.row + 1) ||
+           (!isVertical && pos.row == selectedPosition.row && pos.col == selectedPosition.col + 1));
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -35,7 +32,7 @@ class Tile extends StatelessWidget {
             return GestureDetector(
               onTap: () => _handleTap(context, boardState, rackState),
               child: DragTarget<DragData>(
-                onWillAccept: (data) => boardState.letters[row][col] == null, 
+                onWillAccept: (data) => letter == null, 
                 onAccept: (data) => _handleDragAccept(context, boardState, rackState, data),
                 builder: (context, candidateData, rejectedData) {
                   return Container(
@@ -89,30 +86,32 @@ class Tile extends StatelessWidget {
 
   Widget _buildLetterWidget(String letter, BoardState boardState, double tileSize) {   
     if (boardState.isTemp(index)) {
+      final isBlank = boardState.isBlank(index);
+
       return Draggable<DragData>(
         data: DragData(
-          letter: letter,
+          letter: isBlank ? ' ' : letter,
           boardIndex: index,
         ),
         onDragEnd: (details) => boardState.endDragging(details.wasAccepted, index),
         feedback: Material(
           color: Colors.transparent,
-          child: buildTileWithShadow(letter, tileSize)
+          child: buildTileWithShadow(isBlank ? ' ' : letter, tileSize)
         ),
         childWhenDragging: _buildPropertyWidget(property),
         child: buildTile(
           letter, 
           tileSize,
-          specialColor: [Colors.amberAccent[100]!, Colors.amberAccent]
+          specialColor: isBlank ? [Colors.pink[50]!, Colors.pink[100]!] : [Colors.amberAccent[100]!, Colors.amberAccent]
         ),
       );
     } else if (boardState.isBlank(index)) {
-    return buildTile(
+      return buildTile(
         letter,
         tileSize,
         specialColor: [Colors.pink[50]!, Colors.pink[100]!]
       );
-    } else{
+    } else {
       return buildTile(
         letter,
         tileSize,
@@ -145,18 +144,52 @@ class Tile extends StatelessWidget {
     RackState rackState, 
     DragData data
   ) {
-    final row = index ~/ BoardState.boardSize;
-    final col = index % BoardState.boardSize;
+    final pos = Position.fromIndex(index);
     
-    if (boardState.letters[row][col] == null) {
-      boardState.addTemporaryLetter(data.letter, Position(row, col));
+    if (boardState.letters[pos.row][pos.col] == null) {
       
-      // Retirer la lettre du rack ou de son ancienne position
-      if (data.rackIndex != null) {
-        rackState.removeLetter(data.rackIndex!);
+      if (data.letter == ' ') {
+        _showBlankLetterSelectionDialog(context, boardState, rackState, pos, data);
+      } else {
+        boardState.addTemporaryLetter(data.letter, pos);
+        if (data.rackIndex != null) {
+          rackState.removeLetter(data.rackIndex!);
+        }
       }
     }
   }
+
+  Future<void> _showBlankLetterSelectionDialog(
+  BuildContext context,
+  BoardState boardState,
+  RackState rackState,
+  Position pos,
+  DragData data
+) async {  
+  final chosenLetter = await showDialog<String>(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        insetPadding: EdgeInsets.all(4),
+        contentPadding: EdgeInsets.all(4),
+        content: SizedBox(
+          width: MediaQuery.of(context).size.width,
+          child: Keyboard(letterPicker: true),
+        ),
+      );
+    },
+  );
+
+  
+  if (chosenLetter != null) {
+    boardState.addTemporaryLetter(chosenLetter, pos);
+    boardState.toggleBlank(pos);
+    if (data.rackIndex != null) {
+      rackState.removeLetter(data.rackIndex!);
+    }
+  }
+}
+
 
   static Widget buildTileWithShadow(String letter, double size) {
     return Container(

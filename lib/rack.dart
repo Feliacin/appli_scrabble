@@ -131,11 +131,7 @@ class Rack extends StatelessWidget {
           color: Colors.transparent,
           child: Tile.buildTileWithShadow(rackState.letters[index], size)
         ),
-        childWhenDragging: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.red),
-          ),
-        ),
+        childWhenDragging: Container(),
         child: Tile.buildTile(rackState.letters[index], size, horizontalMargin: size * 0.025, withBorder: true),
             ),
           );
@@ -152,6 +148,8 @@ class RackState extends ChangeNotifier {
   int? _hoverIndex;
   int _leftGroupShift = 0; // lorsqu'on survole le centre du rack avec une lettre, on peut la déposer sur le côté gauche ou droit
   
+  RackState();
+
   bool get isSelected => _isSelected;
   set isSelected(bool value) {
     _isSelected = value;
@@ -346,6 +344,20 @@ class RackState extends ChangeNotifier {
       keys.remove(letters.length);
     }
     notifyListeners();
+  }
+
+  // Sauvegarde et restauration de l'état
+  Map<String, dynamic> toJson() {
+    return {
+      'letters': letters,
+      'leftGroupLength': _leftGroupLength,
+    };
+  }
+
+  RackState.fromJson(Map<String, dynamic> json)
+    : letters = List<String>.from(json['letters']) {
+      keys = List.generate(letters.length, (index) => index);
+      _leftGroupLength = json['leftGroupLength'];
   }
 }
 

@@ -29,9 +29,11 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      //context.read<BoardState>().saveState();
+      // Sauvegarde de l'état de l'application
+      context.read<AppState>().saveState();
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +41,32 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
     final currentSession = appState.currentSession;
     final boardState = currentSession?.boardState ?? appState.searchBoard;
     final rackState = currentSession?.playerRack ?? RackState();
+
+    if (currentSession != null && currentSession.isGameOver == true) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final winner = currentSession.playerScore > currentSession.computerScore 
+          ? 'Vous avez gagné' 
+          : currentSession.playerScore < currentSession.computerScore 
+              ? 'L\'ordinateur a gagné'
+              : 'Égalité';
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$winner ! Score final : ${currentSession.playerScore}-${currentSession.computerScore}'
+          ),
+          duration: const Duration(days: 1), // Reste affiché jusqu'à nouvelle partie
+          action: SnackBarAction(
+            label: 'Nouvelle partie',
+            onPressed: () {
+              appState.createNewSession();
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+    });
+  }
 
     return MultiProvider(
       providers: [
@@ -167,7 +195,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
         );
       },
     );
-  }
+  }  
 
   Widget _buildPortraitLayout() {
     return Column(

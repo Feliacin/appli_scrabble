@@ -6,34 +6,38 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class Keyboard extends StatelessWidget {
-  const Keyboard({super.key});
+  final bool letterPicker;
+  const Keyboard({super.key, this.letterPicker = false});
 
   void _handleLetterPress(BuildContext context, String letter) {
+      if (letterPicker) {
+        Navigator.of(context).pop(letter);
+        return;
+      }
+
     final rackState = context.read<RackState>();
     final boardState = context.read<BoardState>();
     
     if (rackState.isSelected) {
       rackState.addLetter(letter);
     } else if (boardState.selectedIndex != null) {
-      final index = boardState.selectedIndex!;
-      final row = index ~/ BoardState.boardSize;
-      final col = index % BoardState.boardSize;
+      final pos = Position.fromIndex(boardState.selectedIndex!);
 
       if (letter == ' ') {
-        if (boardState.letters[row][col] != null) {
-          boardState.toggleBlank(Position(row, col));
+        if (boardState.letters[pos.row][pos.col] != null) {
+          boardState.toggleBlank(pos);
         }
         return;
       }
       
       // Ajouter la lettre
-      boardState.writeLetter(letter, Position(row, col));
+      boardState.writeLetter(letter, pos);
 
       // Déplacer la sélection
-      if (boardState.isVertical && row < BoardState.boardSize - 1) {
-        boardState.selectedIndex = (row + 1) * BoardState.boardSize + col;
-      } else if (!boardState.isVertical && col < BoardState.boardSize - 1) {
-        boardState.selectedIndex = row * BoardState.boardSize + (col + 1);
+      if (boardState.isVertical && pos.row < BoardState.boardSize - 1) {
+        boardState.selectedIndex = (pos.row + 1) * BoardState.boardSize + pos.col;
+      } else if (!boardState.isVertical && pos.col < BoardState.boardSize - 1) {
+        boardState.selectedIndex = pos.row * BoardState.boardSize + (pos.col + 1);
       }
     }
   }
@@ -86,19 +90,22 @@ class Keyboard extends StatelessWidget {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ...row.map((letter) => Padding(
-                      padding: const EdgeInsets.all(1.0),
-                      child: SizedBox(
-                        width: buttonSize,
-                        height: buttonSize,
-                        child: InkWell(
-                          onTap: () => _handleLetterPress(context, letter),
-                          child: Tile.buildTile(letter, buttonSize, withBorder: true),
+                    ...row.map((letter) => letterPicker && letter != ' '
+                      ? Padding(
+                        padding: const EdgeInsets.all(1.0),
+                        child: SizedBox(
+                          width: buttonSize,
+                          height: buttonSize,
+                          child: InkWell(
+                            onTap: () => _handleLetterPress(context, letter),
+                            child: Tile.buildTile(letter, buttonSize, withBorder: true),
+                          ),
                         ),
-                      ),
-                    )),
+                      )
+                      : const SizedBox.shrink()
+                    ),
                     
-                    if (idx == 2)
+                    if (idx == 2 && !letterPicker)
                       Padding(
                         padding: const EdgeInsets.all(1.0),
                         child: SizedBox(

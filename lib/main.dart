@@ -1,12 +1,17 @@
+import 'dart:convert';
+
 import 'package:appli_scrabble/board.dart';
 import 'package:appli_scrabble/screen.dart';
 import 'package:appli_scrabble/game_session.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'useful_classes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await MainApp.dictionary.load('assets/dictionnaire.txt');
   
   final appState = AppState();
   await appState.restoreState();
@@ -24,14 +29,8 @@ class MainApp extends StatelessWidget {
 
   const MainApp({super.key});
 
-  _loadDictionary() async {
-    await dictionary.load('assets/dictionnaire.txt');
-  }
-
   @override
   Widget build(BuildContext context) {
-    _loadDictionary();
-
     return MaterialApp(
       theme: ThemeData(
         primarySwatch: Colors.brown,
@@ -97,7 +96,43 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> saveState() async {
+  final prefs = await SharedPreferences.getInstance();
+
+  await prefs.setString('searchBoard', jsonEncode(searchBoard.toJson()));
+
+  List<Map<String, dynamic>> sessionsData =
+      _sessions.map((session) {
+        session.returnLettersToRack();
+        return session.toJson();
+      }).toList();
+  await prefs.setString('app_sessions', jsonEncode(sessionsData));
+
+  if (_currentSessionIndex != null) {
+    await prefs.setInt('app_current_session', _currentSessionIndex!);
+  } else {
+    await prefs.remove('app_current_session');
+  }
+}
+
   Future<void> restoreState() async {
-    // to do
+    final prefs = await SharedPreferences.getInstance();
+
+    String? searchBoardJson = prefs.getString('searchBoard');
+    if (searchBoardJson != null) {
+      searchBoard = BoardState.fromJson(jsonDecode(searchBoardJson));
+    }
+
+    String? sessionsJson = prefs.getString('app_sessions');
+    if (sessionsJson != null) {
+      List<dynamic> sessionsData = jsonDecode(sessionsJson);
+      _sessions.clear();
+      for (var sessionData in sessionsData) {
+        _sessions.add(GameSession.fromJson(sessionData));
+      }
+    }
+
+    _currentSessionIndex = prefs.getInt('app_current_session');
+    notifyListeners();
   }
 }
