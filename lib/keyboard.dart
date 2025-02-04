@@ -90,7 +90,7 @@ class Keyboard extends StatelessWidget {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ...row.map((letter) => letterPicker && letter != ' '
+                    ...row.map((letter) => letter != ' ' || !letterPicker
                       ? Padding(
                         padding: const EdgeInsets.all(1.0),
                         child: SizedBox(

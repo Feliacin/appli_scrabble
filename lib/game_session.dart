@@ -44,6 +44,9 @@ class GameSession {
       playerRack.addLetter(bag.drawLetter());
     }
     playerScore += word.points;
+    if (bag.isEmpty) {
+      _endGame();
+    }
     boardState.updatePossibleLetters();
     isPlayerTurn = false;
   }
@@ -58,6 +61,9 @@ class GameSession {
       }
     }
     computerScore += lastPlayedWord!.points;
+    if (bag.isEmpty) {
+      _endGame();
+    }
     boardState.updatePossibleLetters();
     isPlayerTurn = true;
   }
@@ -138,6 +144,7 @@ class LetterBag {
   }
 
   String drawLetter() => _letters.removeLast();
+  bool get isEmpty => _letters.isEmpty;
   bool get isNotEmpty => _letters.isNotEmpty;
   int get remainingCount => _letters.length;
 
