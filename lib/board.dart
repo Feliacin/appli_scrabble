@@ -66,17 +66,18 @@ class BoardState extends ChangeNotifier {
   List<Position> _blanks;
   bool _isVertical;
   String _boardType;
+  static String defaultBoardType = 'scrabble';
   List<Position> _tempLetters;
   List<List<String>> _specialPositions;
   List<List<PossibleLetters>> possibleLetters;
 
-  BoardState() : 
+  BoardState(): 
     _letters = List.generate(boardSize, (_) => List.filled(boardSize, null)),
     _blanks = [],
-    _isVertical = false,
-    _boardType = 'scrabble',
     _tempLetters = [],
-    _specialPositions = _initializeSpecialPositions('scrabble'),
+    _isVertical = false,
+    _boardType = defaultBoardType,
+    _specialPositions = _initializeSpecialPositions(defaultBoardType),
     possibleLetters = List.generate(boardSize, (_) => List.generate(boardSize, (_) => PossibleLetters()));
 
   // Getters
@@ -91,11 +92,6 @@ class BoardState extends ChangeNotifier {
   bool get isFirstTurn => _letters[center.row][center.col] == null || isTemp(center.index);
 
   // Setters
-  set boardType(String value) {
-    _boardType = value;
-    _specialPositions = _initializeSpecialPositions(value);
-    notifyListeners();
-  }
   set letters(List<List<String?>> newLetters) {
     _letters = newLetters;
     notifyListeners();
@@ -211,13 +207,6 @@ class BoardState extends ChangeNotifier {
   bool isTemp(int index) => _tempLetters.contains(Position.fromIndex(index));
 
   void updatePossibleLetters() => possibleLetters = PossibleLetters.scan(this);
-
-  void reset() {
-    _letters = List.generate(boardSize, (_) => List.filled(boardSize, null));
-    _blanks = [];
-    _specialPositions = _initializeSpecialPositions(_boardType);
-    notifyListeners();
-  }
 
   void place(PlayableWord playableWord) {
     for (int i = 0; i < playableWord.length; i++) {
@@ -456,6 +445,7 @@ class BoardState extends ChangeNotifier {
     return {
       'letters': _letters.map((row) => row.map((letter) => letter ?? '').toList()).toList(),
       'blanks': _blanks.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
+      'tempLetters': _tempLetters.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
       'boardType': _boardType,
     };
   }
@@ -464,8 +454,8 @@ class BoardState extends ChangeNotifier {
     : _letters = (json['letters'] as List).map((row) =>
         (row as List).map((letter) => letter == '' ? null : letter as String).toList()).toList(),
       _blanks = (json['blanks'] as List).map((e) => Position(e['row'], e['col'])).toList(),
+      _tempLetters = (json['tempLetters'] as List).map((e) => Position(e['row'], e['col'])).toList(),
       _isVertical = false,
-      _tempLetters = [],
       _boardType = json['boardType'],
       _specialPositions = _initializeSpecialPositions(json['boardType']),
       possibleLetters = [] {

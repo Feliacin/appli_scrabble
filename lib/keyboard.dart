@@ -77,6 +77,7 @@ class Keyboard extends StatelessWidget {
       builder: (context, constraints) {
         final keySize = (constraints.maxWidth - 20) / 10;
         final buttonSize = keySize - 2;
+        final boardState = context.read<BoardState>();
         
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
@@ -98,7 +99,7 @@ class Keyboard extends StatelessWidget {
                           height: buttonSize,
                           child: InkWell(
                             onTap: () => _handleLetterPress(context, letter),
-                            child: Tile.buildTile(letter, buttonSize, withBorder: true),
+                            child: Tile.buildTile(letter, buttonSize, boardState, withBorder: true),
                           ),
                         ),
                       )
@@ -116,6 +117,7 @@ class Keyboard extends StatelessWidget {
                             child: Tile.buildTile(
                               '⌫',
                               buttonSize,
+                              boardState,
                               specialColor: [Colors.red[50]!, Colors.red[100]!],
                               withBorder: true
                             ),

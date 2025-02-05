@@ -218,6 +218,15 @@ class PlayableWord {
       points += boardState.boardType == 'scrabble' ? 50 : 49; // Bonus pour avoir utilisé toutes les lettres
     }
   }
+
+  bool covers (int index) {
+    final position = Position.fromIndex(index);
+    if (isHorizontal) {
+      return position.row == row && position.col >= col && position.col < col + length;
+    } else {
+      return position.col == col && position.row >= row && position.row < row + length;
+    }
+  }
 }
 
 class BestWords {

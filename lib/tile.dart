@@ -1,5 +1,7 @@
 import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/game_session.dart';
 import 'package:appli_scrabble/keyboard.dart';
+import 'package:appli_scrabble/main.dart';
 import 'package:appli_scrabble/useful_classes.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -13,8 +15,8 @@ class Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<BoardState, RackState>(
-      builder: (context, boardState, rackState, _) {
+    return Consumer3<AppState, BoardState, RackState>(
+      builder: (context, appState, boardState, rackState, _) {
         final pos = Position.fromIndex(index);
         final selectedPosition = Position.fromIndex(boardState.selectedIndex ?? 0);
         final letter = boardState.letters[pos.row][pos.col];
@@ -30,7 +32,7 @@ class Tile extends StatelessWidget {
             final tileSize = constraints.maxWidth;
 
             return GestureDetector(
-              onTap: () => _handleTap(context, boardState, rackState),
+              onTap: () => appState.isSearchMode ? _handleTap(context, boardState, rackState) : null,
               child: DragTarget<DragData>(
                 onWillAccept: (data) => letter == null, 
                 onAccept: (data) => _handleDragAccept(context, boardState, rackState, data),
@@ -45,7 +47,7 @@ class Tile extends StatelessWidget {
                     ),
                     child: Center(
                       child: letter != null
-                        ? _buildLetterWidget(letter, boardState, tileSize)
+                        ? _buildLetterWidget(letter, boardState, appState.currentSession, tileSize)
                         : _buildPropertyWidget(property),
                     ),
                   );
@@ -84,7 +86,7 @@ class Tile extends StatelessWidget {
     }
   }
 
-  Widget _buildLetterWidget(String letter, BoardState boardState, double tileSize) {   
+  Widget _buildLetterWidget(String letter, BoardState boardState, GameSession? session, double tileSize) {   
     if (boardState.isTemp(index)) {
       final isBlank = boardState.isBlank(index);
 
@@ -96,25 +98,27 @@ class Tile extends StatelessWidget {
         onDragEnd: (details) => boardState.endDragging(details.wasAccepted, index),
         feedback: Material(
           color: Colors.transparent,
-          child: buildTileWithShadow(isBlank ? ' ' : letter, tileSize)
+          child: buildTileWithShadow(isBlank ? ' ' : letter, tileSize, boardState)
         ),
         childWhenDragging: _buildPropertyWidget(property),
         child: buildTile(
-          letter, 
-          tileSize,
+          letter, tileSize, boardState,
           specialColor: isBlank ? [Colors.pink[50]!, Colors.pink[100]!] : [Colors.amberAccent[100]!, Colors.amberAccent]
         ),
       );
     } else if (boardState.isBlank(index)) {
       return buildTile(
-        letter,
-        tileSize,
+        letter, tileSize, boardState,
         specialColor: [Colors.pink[50]!, Colors.pink[100]!]
       );
-    } else {
+    } else if (boardState.tempLetters.isEmpty && (session?.lastPlayedWord?.covers(index) ?? false)) {
       return buildTile(
-        letter,
-        tileSize,
+        letter, tileSize, boardState,
+        specialColor: [Colors.amberAccent[100]!, Colors.amberAccent]
+      );
+      } else {
+      return buildTile(
+        letter, tileSize, boardState
       );
     }
   }
@@ -180,7 +184,6 @@ class Tile extends StatelessWidget {
     },
   );
 
-  
   if (chosenLetter != null) {
     boardState.addTemporaryLetter(chosenLetter, pos);
     boardState.toggleBlank(pos);
@@ -189,9 +192,7 @@ class Tile extends StatelessWidget {
     }
   }
 }
-
-
-  static Widget buildTileWithShadow(String letter, double size) {
+  static Widget buildTileWithShadow(String letter, double size, BoardState boardState) {
     return Container(
       width: size,
       height: size,
@@ -205,11 +206,11 @@ class Tile extends StatelessWidget {
           ),
         ],
       ),
-      child: buildTile(letter, size),
+      child: buildTile(letter, size, boardState),
     );
   }
 
-  static Widget buildTile(String letter, double size, {
+  static Widget buildTile(String letter, double size, BoardState boardState, {
       double horizontalMargin = 0,
       bool withBorder = false,
       List<Color>? specialColor}) {
@@ -229,7 +230,9 @@ class Tile extends StatelessWidget {
           colors: specialColor ?? [Colors.amber[50]!, Colors.amber[100]!],
         ),
       ),
-      child: Center(
+      child: Stack(
+        children: [
+          Center(
             child: Text(
               letter.toUpperCase(),
               style: TextStyle(
@@ -238,7 +241,23 @@ class Tile extends StatelessWidget {
                 color: Colors.brown[700],
               ),
             ),
-          )
+          ),
+
+          if (letter != ' ' && letter != '⌫')
+            Positioned(
+              bottom: size * 0.05,
+              right: size * 0.05,
+              child: Text(
+                boardState.letterPoints[letter].toString(),
+                style: TextStyle(
+                  fontSize: size * 0.2,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.brown[700],
+                ),
+              ),
+            ),
+        ]
+      )
     );
   }
 }

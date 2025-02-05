@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:appli_scrabble/useful_classes.dart';
 import 'package:appli_scrabble/wordsuggestions.dart';
 
@@ -44,7 +46,7 @@ class GameSession {
       playerRack.addLetter(bag.drawLetter());
     }
     playerScore += word.points;
-    if (bag.isEmpty) {
+    if (bag.isEmpty && playerRack.letters.isEmpty) {
       _endGame();
     }
     boardState.updatePossibleLetters();
@@ -52,7 +54,12 @@ class GameSession {
   }
 
   void computerPlays() {
-    lastPlayedWord = boardState.findWord(computerRack)[WordSuggestions.number - 1];
+    returnLettersToRack();
+    final possibleWords = boardState.findWord(computerRack);
+    if (possibleWords.isEmpty) {
+      _endGame();
+    }
+    lastPlayedWord = possibleWords[min(possibleWords.length-1, WordSuggestions.number - 1)];
     boardState.place(lastPlayedWord!);
     for (var letter in lastPlayedWord!.word.split('')) {
       computerRack.remove(letter);
@@ -61,11 +68,27 @@ class GameSession {
       }
     }
     computerScore += lastPlayedWord!.points;
-    if (bag.isEmpty) {
+    if (bag.isEmpty && computerRack.isEmpty) {
       _endGame();
     }
     boardState.updatePossibleLetters();
     isPlayerTurn = true;
+    lastPlayedWord = null;
+  }
+
+  void exchangeLetters(List<String> letters) {
+    for (var letter in letters) {
+      playerRack.removeLetter(playerRack.letters.indexOf(letter));
+      bag._letters.add(letter);
+    }
+
+    bag._letters.shuffle();
+
+    for (var i = 0; i < letters.length && bag.isNotEmpty; i++) {
+      playerRack.addLetter(bag.drawLetter());
+    }
+
+    isPlayerTurn = false;
   }
 
   void _endGame() {
@@ -132,11 +155,16 @@ class LetterBag {
   }
 
   void _initializeLetters(String type) {
+    // final letterDistribution = {
+    //   'a': 9, 'b': 2, 'c': 2, 'd': 3, 'e': 15, 'f': 2, 'g': 2, 'h': 2, 'i': 8,
+    //   'j': 1, 'k': 1, 'l': 5, 'm': 3, 'n': 6, 'o': 6, 'p': 2, 'q': 1, 'r': 6,
+    //   's': 6, 't': 6, 'u': 6, 'v': 2, 'w': 1, 'x': 1, 'y': 1, 'z': 1, ' ': 2
+    // };
     final letterDistribution = {
-      'a': 9, 'b': 2, 'c': 2, 'd': 3, 'e': 15, 'f': 2, 'g': 2, 'h': 2, 'i': 8,
-      'j': 1, 'k': 1, 'l': 5, 'm': 3, 'n': 6, 'o': 6, 'p': 2, 'q': 1, 'r': 6,
-      's': 6, 't': 6, 'u': 6, 'v': 2, 'w': 1, 'x': 1, 'y': 1, 'z': 1, ' ': 2
-    };
+  'a': 4, 'b': 1, 'c': 2, 'd': 2, 'e': 6, 'f': 1, 'g': 1, 'h': 1, 'i': 4,
+  'l': 2, 'm': 2, 'n': 3, 'o': 3, 'p': 1, 'r': 3, 's': 3, 't': 3, 'u': 3, 'v': 1, ' ': 2
+};
+
     letterDistribution.forEach((letter, count) {
       _letters.addAll(List.filled(count, letter));
     });

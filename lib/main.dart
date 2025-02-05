@@ -53,9 +53,15 @@ class AppState extends ChangeNotifier {
 
   List<PlayableWord> get wordSuggestions => _wordSuggestions;
   List<GameSession> get sessions => _sessions;
+  bool get isSearchMode => _currentSessionIndex == null;
   bool get isGameMode => _currentSessionIndex != null;
   GameSession? get currentSession => 
   _currentSessionIndex != null ? _sessions[_currentSessionIndex!] : null;
+
+  set isSearchMode(bool value) {
+    _currentSessionIndex = value ? null : _currentSessionIndex;
+    notifyListeners();
+  }
 
   void createNewSession() {
     final session = GameSession();
@@ -68,7 +74,7 @@ class AppState extends ChangeNotifier {
     _sessions.removeAt(index);
     if (_currentSessionIndex == index) {
       _currentSessionIndex = _sessions.isEmpty ? null : 0;
-    } else if (_currentSessionIndex! > index) {
+    } else if (_currentSessionIndex != null && _currentSessionIndex! > index) {
       _currentSessionIndex = _currentSessionIndex! - 1;
     }
     notifyListeners();
@@ -100,10 +106,10 @@ class AppState extends ChangeNotifier {
   final prefs = await SharedPreferences.getInstance();
 
   await prefs.setString('searchBoard', jsonEncode(searchBoard.toJson()));
+  await prefs.setString('defaultBoardType', BoardState.defaultBoardType);
 
   List<Map<String, dynamic>> sessionsData =
       _sessions.map((session) {
-        session.returnLettersToRack();
         return session.toJson();
       }).toList();
   await prefs.setString('app_sessions', jsonEncode(sessionsData));
@@ -122,6 +128,7 @@ class AppState extends ChangeNotifier {
     if (searchBoardJson != null) {
       searchBoard = BoardState.fromJson(jsonDecode(searchBoardJson));
     }
+    BoardState.defaultBoardType = prefs.getString('defaultBoardType') ?? 'scrabble';
 
     String? sessionsJson = prefs.getString('app_sessions');
     if (sessionsJson != null) {

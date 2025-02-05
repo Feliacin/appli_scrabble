@@ -88,8 +88,8 @@ class Rack extends StatelessWidget {
                                     curve: Curves.easeInOut,
                                     left: position,
                                     child: _buildDraggableTile(
-                                      context,
                                       rackState,
+                                      boardState,
                                       index,
                                       tileSize,
                                       appState.isGameMode,
@@ -112,13 +112,13 @@ class Rack extends StatelessWidget {
     );
   }
 
-  Widget _buildDraggableTile(BuildContext context, RackState rackState, int index, double size, bool isGameMode) {
+  Widget _buildDraggableTile(RackState rackState, BoardState boardState, int index, double size, bool isGameMode) {
     return GestureDetector(
       onTap: isGameMode
         ? () => rackState._clickLetter(index)
         : () {
             rackState.isSelected = true;
-            context.read<BoardState>().selectedIndex = null;
+            boardState.selectedIndex = null;
           },
       child: Draggable<DragData>(
         data: DragData(
@@ -129,14 +129,14 @@ class Rack extends StatelessWidget {
         onDragEnd: (_) => rackState._endDragging(),
         feedback: Material(
           color: Colors.transparent,
-          child: Tile.buildTileWithShadow(rackState.letters[index], size)
+          child: Tile.buildTileWithShadow(rackState.letters[index], size, boardState)
         ),
         childWhenDragging: Container(),
-        child: Tile.buildTile(rackState.letters[index], size, horizontalMargin: size * 0.025, withBorder: true),
-            ),
-          );
-        }
-      }
+        child: Tile.buildTile(rackState.letters[index], size, boardState, horizontalMargin: size * 0.025, withBorder: true),
+      ),
+    );
+  }
+}
 
 class RackState extends ChangeNotifier {
   static const int maxLetters = 7;
