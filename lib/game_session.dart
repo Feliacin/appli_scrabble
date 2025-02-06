@@ -31,7 +31,7 @@ class GameSession {
 
   void returnLettersToRack() {
     for (var pos in boardState.tempLetters) {
-      String letter = boardState.letters[pos.row][pos.col]!;
+      String letter = boardState.isBlank(pos.index) ? ' ' : boardState.letters[pos.row][pos.col]!;
       playerRack.addLetter(letter);
       boardState.removeLetter(pos);
       boardState.removeBlank(pos);

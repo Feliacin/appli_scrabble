@@ -22,8 +22,11 @@ class Rack extends StatelessWidget {
         return Consumer3<AppState, RackState, BoardState>(
           builder: (context, appState, rackState, boardState, _) {
             return GestureDetector(
-              onTap: !appState.isGameMode 
-                ? () => rackState.isSelected = true
+              onTap: appState.isSearchMode
+                ? () {
+                  boardState.selectedIndex = null;
+                  rackState.isSelected = true;
+                }
                 : null,
               child: SizedBox(
                 height: tileSize + padding * 2 + margin * 2,
