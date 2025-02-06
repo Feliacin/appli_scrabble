@@ -503,38 +503,72 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
   }
 
   Widget _buildDrawerHeader(AppState appState) {
-    return DrawerHeader(
-      decoration: BoxDecoration(
-        color: Colors.brown[300],
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Scrabble Assistant',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.brown[300],
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.1),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.extension,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Scrabble Assistant',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ),
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.settings,
-              color: Colors.white,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(50),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.settings,
+                    color: Colors.white.withOpacity(0.9),
+                    size: 22,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSettingsDialog(context);
+                },
+                hoverColor: Colors.white.withOpacity(0.1),
+                splashColor: Colors.white.withOpacity(0.2),
+                highlightColor: Colors.white.withOpacity(0.1),
+              ),
             ),
-            onPressed: () {
-              Navigator.pop(context);
-              _showSettingsDialog(context);
-            },
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
   void _showSettingsDialog(BuildContext context) {
     showDialog(
