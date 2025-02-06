@@ -45,6 +45,7 @@ class GameSession {
     for (int i = 0; bag.isNotEmpty && i < word.length; i++) {
       playerRack.addLetter(bag.drawLetter());
     }
+    boardState.highlightedWord = lastPlayedWord;
     playerScore += word.points;
     if (bag.isEmpty && playerRack.letters.isEmpty) {
       _endGame();
@@ -67,13 +68,13 @@ class GameSession {
         computerRack.add(bag.drawLetter());
       }
     }
+    boardState.highlightedWord = lastPlayedWord;
     computerScore += lastPlayedWord!.points;
     if (bag.isEmpty && computerRack.isEmpty) {
       _endGame();
     }
     boardState.updatePossibleLetters();
     isPlayerTurn = true;
-    lastPlayedWord = null;
   }
 
   void exchangeLetters(List<String> letters) {

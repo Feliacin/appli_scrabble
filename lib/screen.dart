@@ -3,6 +3,7 @@ import 'package:appli_scrabble/game_session.dart';
 import 'package:appli_scrabble/keyboard.dart';
 import 'package:appli_scrabble/main.dart';
 import 'package:appli_scrabble/rack.dart';
+import 'package:appli_scrabble/tile.dart';
 import 'package:appli_scrabble/wordsuggestions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -63,6 +64,10 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  void refresh() {
+    setState(() {});
   }
 
   Widget _buildGameControls() {
@@ -130,7 +135,6 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
       },
     );
   }
-
 
   Widget _buildControlButton({
     required IconData icon,
@@ -399,7 +403,6 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
                         }
                       : () {
                         _showLetterExchangeDialog(context, session);
-                        setState(() {});
                       },
             ),
           );
@@ -409,83 +412,115 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
     );
   }
 
-  void _showLetterExchangeDialog(BuildContext context, GameSession session) {
-  final selectedLetters = <String>{};
-  
-  showDialog(
-    context: context,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Text('Échanger des lettres'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Sélectionnez les lettres à échanger\n(${session.bag.remainingCount} lettres dans le sac)',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: session.playerRack.letters.map((letter) {
-                    final isSelected = selectedLetters.contains(letter);
-                    return InkWell(
-                      onTap: () {
-                        setState(() {
-                          if (isSelected) {
-                            selectedLetters.remove(letter);
-                          } else {
-                            selectedLetters.add(letter);
-                          }
-                        });
-                      },
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.brown[300] : Colors.brown[100],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Center(
+  void _showLetterExchangeDialog(BuildContext screenContext, GameSession session) {
+    final selectedIndices = <int>{};
+    final remainingCount = session.bag.remainingCount;
+
+    showDialog(
+      context: screenContext,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.all(4),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final tileSize = (constraints.maxWidth - 16 - 7 * 4) / 7;
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.brown[400]!, Colors.brown[300]!],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            alignment: WrapAlignment.center,
+                            children: List.generate(
+                              session.playerRack.letters.length,
+                              (index) {
+                                final letter = session.playerRack.letters[index];
+                                final isSelected = selectedIndices.contains(index);
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      if (isSelected) {
+                                        selectedIndices.remove(index);
+                                      } else if (selectedIndices.length < remainingCount) {
+                                        selectedIndices.add(index);
+                                      }
+                                    });
+                                  },
+                                  child: Tile.buildTile(
+                                    letter,
+                                    tileSize,
+                                    screenContext.read<BoardState>().letterPoints,
+                                    isHighLighted: isSelected,
+                                    withBorder: true,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      }
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Expanded(
                           child: Text(
-                            letter.toUpperCase(),
+                            '${selectedIndices.length}/$remainingCount',
                             style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.brown[900],
+                              fontSize: 16,
+                              color: selectedIndices.length == remainingCount 
+                                ? Colors.orange 
+                                : Colors.grey[600],
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: const Text('Annuler'),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: selectedIndices.isEmpty ? null : () {
+                            final letters = selectedIndices
+                              .toList()
+                              .map((i) => session.playerRack.letters[i])
+                              .toList();
+                            session.exchangeLetters(letters);
+                            Navigator.of(context).pop();
+                            refresh();
+                          },
+                          child: const Text('Échanger'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Annuler'),
               ),
-              TextButton(
-                onPressed: selectedLetters.isEmpty ? null : () {
-                  session.exchangeLetters(selectedLetters.toList());
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Échanger'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-}
+            );
+          },
+        );
+      },
+    );
+  }
 
   Widget _buildDrawer() {
     return Drawer(
@@ -546,6 +581,13 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(50),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSettingsDialog(context);
+                },
+                hoverColor: Colors.white.withOpacity(0.1),
+                splashColor: Colors.white.withOpacity(0.2),
+                highlightColor: Colors.white.withOpacity(0.1),
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   child: Icon(
@@ -554,13 +596,6 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
                     size: 22,
                   ),
                 ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showSettingsDialog(context);
-                },
-                hoverColor: Colors.white.withOpacity(0.1),
-                splashColor: Colors.white.withOpacity(0.2),
-                highlightColor: Colors.white.withOpacity(0.1),
               ),
             ),
           ],

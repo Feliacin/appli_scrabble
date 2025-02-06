@@ -65,11 +65,12 @@ class BoardState extends ChangeNotifier {
   List<List<String?>> _letters;
   List<Position> _blanks;
   bool _isVertical;
-  String _boardType;
+  final String _boardType;
   static String defaultBoardType = 'scrabble';
   List<Position> _tempLetters;
-  List<List<String>> _specialPositions;
+  final List<List<String>> _specialPositions;
   List<List<PossibleLetters>> possibleLetters;
+  PlayableWord? _highlightedWord;
 
   BoardState(): 
     _letters = List.generate(boardSize, (_) => List.filled(boardSize, null)),
@@ -90,6 +91,7 @@ class BoardState extends ChangeNotifier {
   List<Position> get tempLetters => _tempLetters;
   Position get center => Position(boardSize ~/ 2, boardSize ~/ 2);
   bool get isFirstTurn => _letters[center.row][center.col] == null || isTemp(center.index);
+  PlayableWord? get highlightedWord => _highlightedWord;
 
   // Setters
   set letters(List<List<String?>> newLetters) {
@@ -106,6 +108,10 @@ class BoardState extends ChangeNotifier {
   }
   set tempLetters(List<Position> newTempLetters) {
     _tempLetters = newTempLetters;
+    notifyListeners();
+  }
+  set highlightedWord(PlayableWord? word) {
+    _highlightedWord = word;
     notifyListeners();
   }
   //
@@ -153,6 +159,8 @@ class BoardState extends ChangeNotifier {
     'j': 7, 'k': 10, 'l': 2, 'm': 3, 'n': 1, 'o': 1, 'p': 4, 'q': 7, 'r': 1,
     's': 1, 't': 1, 'u': 2, 'v': 5, 'w': 10, 'x': 8, 'y': 8, 'z': 8
     };
+
+  bool isHighLighted(int index) => _tempLetters.isEmpty && (highlightedWord?.covers(index) ?? false);
 
   void endDragging (bool wasAccepted, int index) {
     if (wasAccepted) {

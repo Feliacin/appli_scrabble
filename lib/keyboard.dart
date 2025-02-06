@@ -32,7 +32,7 @@ class Keyboard extends StatelessWidget {
       }
       
       boardState.writeLetter(letter, pos);
-      boardState.selectedIndex = pos.next(boardState.isVertical).index;
+      boardState.selectedIndex = pos.next(!boardState.isVertical).index;
     }
   }
 
@@ -46,7 +46,7 @@ class Keyboard extends StatelessWidget {
       final pos = Position.fromIndex(boardState.selectedIndex!);
 
       boardState.removeLetter(pos);
-      boardState.selectedIndex = pos.previous(boardState.isVertical).index;
+      boardState.selectedIndex = pos.previous(!boardState.isVertical).index;
     }
   }
 
@@ -102,7 +102,7 @@ class Keyboard extends StatelessWidget {
                               '⌫',
                               buttonSize,
                               letterPoints,
-                              specialColor: [Colors.red[50]!, Colors.red[100]!],
+                              isBlank: true,
                               withBorder: true
                             ),
                           ),

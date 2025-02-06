@@ -47,7 +47,7 @@ class Tile extends StatelessWidget {
                     ),
                     child: Center(
                       child: letter != null
-                        ? _buildLetterWidget(letter, boardState, appState.currentSession, tileSize)
+                        ? _buildLetterWidget(letter, isSelected, boardState, appState.currentSession, tileSize)
                         : _buildPropertyWidget(property),
                     ),
                   );
@@ -86,10 +86,10 @@ class Tile extends StatelessWidget {
     }
   }
 
-  Widget _buildLetterWidget(String letter, BoardState boardState, GameSession? session, double tileSize) {   
-    if (boardState.isTemp(index)) {
-      final isBlank = boardState.isBlank(index);
+  Widget _buildLetterWidget(String letter, bool isSelected, BoardState boardState, GameSession? session, double tileSize) {   
+    final isBlank = boardState.isBlank(index);
 
+    if (boardState.isTemp(index)) {
       return Draggable<DragData>(
         data: DragData(
           letter: isBlank ? ' ' : letter,
@@ -103,22 +103,15 @@ class Tile extends StatelessWidget {
         childWhenDragging: _buildPropertyWidget(property),
         child: buildTile(
           letter, tileSize, boardState.letterPoints,
-          specialColor: isBlank ? [Colors.pink[50]!, Colors.pink[100]!] : [Colors.amberAccent[100]!, Colors.amberAccent]
+          isBlank: isBlank,
+          isHighLighted: true,
         ),
       );
-    } else if (boardState.isBlank(index)) {
+    } else {
       return buildTile(
         letter, tileSize, boardState.letterPoints,
-        specialColor: [Colors.pink[50]!, Colors.pink[100]!]
-      );
-    } else if (boardState.tempLetters.isEmpty && (session?.lastPlayedWord?.covers(index) ?? false)) {
-      return buildTile(
-        letter, tileSize, boardState.letterPoints,
-        specialColor: [Colors.amberAccent[100]!, Colors.amberAccent]
-      );
-      } else {
-      return buildTile(
-        letter, tileSize, boardState.letterPoints
+        isBlank: isBlank,
+        isHighLighted: boardState.isHighLighted(index) || isSelected
       );
     }
   }
@@ -213,7 +206,17 @@ class Tile extends StatelessWidget {
   static Widget buildTile(String letter, double size, Map<String, int> letterPoints, {
       double horizontalMargin = 0,
       bool withBorder = false,
-      List<Color>? specialColor}) {
+      bool isBlank = false,
+      bool isHighLighted = false}) {
+    final List<Color>? specialColor;
+    if (isHighLighted) {
+      specialColor = [Colors.amberAccent.shade100, Colors.amberAccent];
+    } else if (isBlank) {
+      specialColor = [Colors.pink.shade50, Colors.pink.shade100];
+    } else {
+      specialColor = null;
+    }
+
     return Container(
       width: size,
       height: size,
@@ -243,7 +246,7 @@ class Tile extends StatelessWidget {
             ),
           ),
 
-          if (letter != ' ' && letter != '⌫')
+          if (letter != ' ' && letter != '⌫' && !isBlank)
             Positioned(
               bottom: size * 0.05,
               right: size * 0.05,

@@ -126,7 +126,7 @@ class PossibleLetters {
               int points = proposal.toString().split('').map((char) => boardState.letterPoints[char]!).reduce((a, b) => a + b);
               for (Position blank in boardState.blanks) {
                 if (isHorizontal) {
-                  if (blank.row == i && blank.col >= j - lettersBefore && blank.col >= j + lettersAfter) {
+                  if (blank.row == i && blank.col >= j - lettersBefore && blank.col <= j + lettersAfter) {
                     points -= boardState.letterPoints[proposal.toString()[blank.col - (j - lettersBefore)]]!;
                   }
                 } else {

@@ -36,9 +36,11 @@ class _WordSuggestionsState extends State<WordSuggestions> {
     
     setState(() {
       if (selectedWord == word) {
+        boardState.highlightedWord = null;
         selectedWord = null;
       } else {
         boardState.place(word);
+        boardState.highlightedWord = word;
         selectedWord = word;
       }
     });
@@ -46,19 +48,23 @@ class _WordSuggestionsState extends State<WordSuggestions> {
 
   void _handleValidate(BuildContext context) {
     context.read<AppState>().clearWordSuggestions();
-    context.read<BoardState>().tempLetters = [];
+    final boardState = context.read<BoardState>();
+    boardState.tempLetters = [];
+
     setState(() {
+      boardState.highlightedWord = null;
       selectedWord = null;
     });
   }
 
   void _handleCancel(BuildContext context) {
-  final boardState = context.read<BoardState>();
+    final boardState = context.read<BoardState>();
   
     boardState.letters = List.from(backupLetters.map((row) => List<String?>.from(row)));
     boardState.blanks = List.from(backupBlanks);
     
     setState(() {
+      boardState.highlightedWord = null;
       selectedWord = null;
     });
     context.read<AppState>().clearWordSuggestions();
