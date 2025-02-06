@@ -46,7 +46,7 @@ class MainApp extends StatelessWidget {
 }
 
 class AppState extends ChangeNotifier {
-  BoardState searchBoard = BoardState();
+  BoardState searchBoard = BoardState()..place(PlayableWord('bienvenue', [])..setPosition(7, 3, true));
   List<PlayableWord> _wordSuggestions = [];
   final List<GameSession> _sessions = [];
   int? _currentSessionIndex;
