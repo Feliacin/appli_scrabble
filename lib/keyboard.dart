@@ -7,7 +7,8 @@ import 'package:provider/provider.dart';
 
 class Keyboard extends StatelessWidget {
   final bool letterPicker;
-  const Keyboard({super.key, this.letterPicker = false});
+  final Map<String, int> letterPoints;
+  const Keyboard(this.letterPoints, {super.key, this.letterPicker = false});
 
   void _handleLetterPress(BuildContext context, String letter) {
       if (letterPicker) {
@@ -30,15 +31,8 @@ class Keyboard extends StatelessWidget {
         return;
       }
       
-      // Ajouter la lettre
       boardState.writeLetter(letter, pos);
-
-      // Déplacer la sélection
-      if (boardState.isVertical && pos.row < BoardState.boardSize - 1) {
-        boardState.selectedIndex = (pos.row + 1) * BoardState.boardSize + pos.col;
-      } else if (!boardState.isVertical && pos.col < BoardState.boardSize - 1) {
-        boardState.selectedIndex = pos.row * BoardState.boardSize + (pos.col + 1);
-      }
+      boardState.selectedIndex = pos.next(boardState.isVertical).index;
     }
   }
 
@@ -47,21 +41,12 @@ class Keyboard extends StatelessWidget {
     final boardState = context.read<BoardState>();
     
     if (rackState.isSelected) {
-      rackState.removeLetter(rackState.letters.length - 1);
+      rackState.removeLast();
     } else if (boardState.selectedIndex != null) {
-      final index = boardState.selectedIndex!;
-      final row = index ~/ BoardState.boardSize;
-      final col = index % BoardState.boardSize;
-      
-      // Supprimer la lettre de la case actuelle
-      boardState.removeLetter(Position(row, col));
+      final pos = Position.fromIndex(boardState.selectedIndex!);
 
-      // Déplacer la sélection
-      if (boardState.isVertical && row > 0) {
-        boardState.selectedIndex = (row - 1) * BoardState.boardSize + col;
-      } else if (col > 0) {
-        boardState.selectedIndex = row * BoardState.boardSize + (col - 1);
-      }
+      boardState.removeLetter(pos);
+      boardState.selectedIndex = pos.previous(boardState.isVertical).index;
     }
   }
 
@@ -77,8 +62,7 @@ class Keyboard extends StatelessWidget {
       builder: (context, constraints) {
         final keySize = (constraints.maxWidth - 20) / 10;
         final buttonSize = keySize - 2;
-        final boardState = context.read<BoardState>();
-        
+                
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
           child: Column(
@@ -99,7 +83,7 @@ class Keyboard extends StatelessWidget {
                           height: buttonSize,
                           child: InkWell(
                             onTap: () => _handleLetterPress(context, letter),
-                            child: Tile.buildTile(letter, buttonSize, boardState, withBorder: true),
+                            child: Tile.buildTile(letter, buttonSize, letterPoints, withBorder: true),
                           ),
                         ),
                       )
@@ -117,7 +101,7 @@ class Keyboard extends StatelessWidget {
                             child: Tile.buildTile(
                               '⌫',
                               buttonSize,
-                              boardState,
+                              letterPoints,
                               specialColor: [Colors.red[50]!, Colors.red[100]!],
                               withBorder: true
                             ),

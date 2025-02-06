@@ -16,6 +16,26 @@ class Position {
 
   int get index => row * BoardState.boardSize + col;
 
+  Position next (bool horizontal) {
+    if (horizontal && col < BoardState.boardSize - 1) {
+      return Position(row, col + 1);
+    } else if (!horizontal && row < BoardState.boardSize - 1) {
+      return Position(row + 1, col);
+    } else {
+      return this;
+    }
+  }
+
+  Position previous (bool horizontal) {
+    if (horizontal && col > 0) {
+      return Position(row, col - 1);
+    } else if (!horizontal && row > 0) {
+      return Position(row - 1, col);
+    } else {
+      return this;
+    }
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

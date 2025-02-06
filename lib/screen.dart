@@ -169,7 +169,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Rack(),
-            if (!isGameMode) const Keyboard(),
+            if (!isGameMode) Keyboard(context.read<BoardState>().letterPoints),
           ],
         );
       },

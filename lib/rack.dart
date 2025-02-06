@@ -129,10 +129,10 @@ class Rack extends StatelessWidget {
         onDragEnd: (_) => rackState._endDragging(),
         feedback: Material(
           color: Colors.transparent,
-          child: Tile.buildTileWithShadow(rackState.letters[index], size, boardState)
+          child: Tile.buildTileWithShadow(rackState.letters[index], size, boardState.letterPoints)
         ),
         childWhenDragging: Container(),
-        child: Tile.buildTile(rackState.letters[index], size, boardState, horizontalMargin: size * 0.025, withBorder: true),
+        child: Tile.buildTile(rackState.letters[index], size, boardState.letterPoints, horizontalMargin: size * 0.025, withBorder: true),
       ),
     );
   }
@@ -343,6 +343,11 @@ class RackState extends ChangeNotifier {
       }
       keys.remove(letters.length);
     }
+    notifyListeners();
+  }
+
+  void removeLast() {
+    letters.removeLast();
     notifyListeners();
   }
 
