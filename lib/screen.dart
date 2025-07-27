@@ -8,6 +8,8 @@ import 'package:appli_scrabble/wordsuggestions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'board_scanner.dart';
+
 class Screen extends StatefulWidget {
   const Screen({super.key});
 
@@ -328,18 +330,28 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
 
           // Mode recherche
           if (session == null) {
-            return Consumer<RackState>(
-              builder: (context, rackState, _) {
-                return IconButton(
-                  icon: const Icon(Icons.search, color: Colors.white),
-                  tooltip: 'Trouver les possibilités',
+            return Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
                   onPressed: () {
-                    appState.setWordSuggestions(
-                      context.read<BoardState>().findWord(rackState.letters)
-                    );
+                    BoardScanner().scanBoard(context, boardState);
                   },
-                );
-              },
+                ),
+                  Consumer<RackState>(
+                    builder: (context, rackState, _) {
+                      return IconButton(
+                        icon: const Icon(Icons.search, color: Colors.white),
+                        tooltip: 'Trouver les possibilités',
+                        onPressed: () {
+                          appState.setWordSuggestions(
+                            context.read<BoardState>().findWord(rackState.letters)
+                          );
+                        },
+                      );
+                    },
+                  ),
+              ],
             );
           }
 

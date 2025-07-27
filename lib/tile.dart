@@ -239,7 +239,7 @@ class Tile extends StatelessWidget {
             child: Text(
               letter.toUpperCase(),
               style: TextStyle(
-                fontSize: size * 0.6,
+                fontSize: size * 0.5,
                 fontWeight: FontWeight.bold,
                 color: Colors.brown[700],
               ),

@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:appli_scrabble/board.dart';
 import 'package:appli_scrabble/screen.dart';
 import 'package:appli_scrabble/game_session.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; 
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'useful_classes.dart';
+
+// Chercher un thème de couleurs pastels
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

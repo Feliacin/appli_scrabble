@@ -32,7 +32,7 @@ class Rack extends StatelessWidget {
                 height: tileSize + padding * 2 + margin * 2,
                 child: Stack(
                   children: [
-                    if (rackState.isSelected)
+                    if (appState.isSearchMode && rackState.isSelected)
                       Positioned.fill(
                         child: Container(
                           margin: const EdgeInsets.all(4),
@@ -90,13 +90,9 @@ class Rack extends StatelessWidget {
                                     duration: const Duration(milliseconds: 150),
                                     curve: Curves.easeInOut,
                                     left: position,
-                                    child: _buildDraggableTile(
-                                      rackState,
-                                      boardState,
-                                      index,
-                                      tileSize,
-                                      appState.isGameMode,
-                                    ),
+                                    child: appState.isSearchMode ? 
+                                      Tile.buildTile(rackState.letters[index], tileSize, boardState.letterPoints, horizontalMargin: tileWidth * 0.025, withBorder: true)
+                                     : _buildDraggableTile(rackState, boardState, index, tileSize, appState.isGameMode),
                                   );
                                 }),
                               ],
