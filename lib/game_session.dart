@@ -7,26 +7,35 @@ import 'board.dart';
 import 'rack.dart';
 
 class GameSession {
-  DateTime createdAt = DateTime.now();
+  DateTime updatedAt = DateTime.now();
+  String? id;
+  List<PlayerInfo> players = [];
+  int localPlayer = 0;
+  int playerTurn = 0;
   BoardState boardState = BoardState();
   RackState playerRack = RackState();
-  List<String> computerRack = [];
-  int playerScore = 0;
-  int computerScore = 0;
-  bool isPlayerTurn = true;
   LetterBag bag = LetterBag('scrabble');
   PlayableWord? lastPlayedWord;
   bool isGameOver = false;
 
-  GameSession() {
-    _distributeInitialLetters();
+  void _nextTurn() {
+    playerTurn = (playerTurn + 1) % players.length;
+  }
+  bool get isOnline => id != null;
+
+  GameSession(String playerName, [this.id]) {
+    addPlayer(playerName);
+    if (id == null) {
+      addPlayer('IA');
+    }
   }
 
-  void _distributeInitialLetters() {
+ void addPlayer(String name) {
+    final newPlayer = PlayerInfo(name);
     for (int i = 0; i < RackState.maxLetters; i++) {
-      playerRack.addLetter(bag.drawLetter());
-      computerRack.add(bag.drawLetter());
+      newPlayer.rack.add(bag.drawLetter());
     }
+    players.add(newPlayer);
   }
 
   void returnLettersToRack() {
@@ -46,35 +55,36 @@ class GameSession {
       playerRack.addLetter(bag.drawLetter());
     }
     boardState.highlightedWord = lastPlayedWord;
-    playerScore += word.points;
+    players[localPlayer].score += word.points;
     if (bag.isEmpty && playerRack.letters.isEmpty) {
       _endGame();
     }
     boardState.updatePossibleLetters();
-    isPlayerTurn = false;
-  }
+    _nextTurn();
+    }
 
   void computerPlays() {
     returnLettersToRack();
-    final possibleWords = boardState.findWord(computerRack);
+    final computer = players.where((p) => p.name == 'IA').first;
+    final possibleWords = boardState.findWord(computer.rack);
     if (possibleWords.isEmpty) {
       _endGame();
     }
     lastPlayedWord = possibleWords[min(possibleWords.length-1, WordSuggestions.number - 1)];
     boardState.place(lastPlayedWord!);
     for (var letter in lastPlayedWord!.word.split('')) {
-      computerRack.remove(letter);
+      computer.rack.remove(letter);
       if (bag.isNotEmpty) {
-        computerRack.add(bag.drawLetter());
+        computer.rack.add(bag.drawLetter());
       }
     }
     boardState.highlightedWord = lastPlayedWord;
-    computerScore += lastPlayedWord!.points;
-    if (bag.isEmpty && computerRack.isEmpty) {
+    computer.score += lastPlayedWord!.points;
+    if (bag.isEmpty && computer.rack.isEmpty) {
       _endGame();
     }
     boardState.updatePossibleLetters();
-    isPlayerTurn = true;
+    _nextTurn();
   }
 
   void exchangeLetters(List<String> letters) {
@@ -89,63 +99,63 @@ class GameSession {
       playerRack.addLetter(bag.drawLetter());
     }
 
-    isPlayerTurn = false;
+    _nextTurn();
   }
 
   void _endGame() {
     isGameOver = true;
-    
     final pointValues = boardState.letterPoints;
-    
-    for (var letter in playerRack.letters) {
-      if (letter != ' ') { // Ignorer les lettres blanches
-        playerScore -= pointValues[letter] ?? 0;
-        computerScore += pointValues[letter] ?? 0;
-      }
-    }
-    
-    for (var letter in computerRack) {
-      if (letter != ' ') {
-        computerScore -= pointValues[letter] ?? 0;
-        playerScore += pointValues[letter] ?? 0;
+    final firstFinisher = players.indexWhere((p) => p.rack.isEmpty);
+
+    for (int i = 0; i < players.length; i++) {
+      if (i == firstFinisher) continue; // Le premier à avoir fini ne perd pas de points
+      for (var letter in players[i].rack) {
+        if (letter != ' ') { // Ignorer les lettres blanches
+          players[i].score -= pointValues[letter] ?? 0;
+          players[firstFinisher].score += pointValues[letter] ?? 0;
+        }
       }
     }
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({required bool localSave}) {
     return {
-      'createdAt': createdAt.toIso8601String(),
-      'playerScore': playerScore,
-      'computerScore': computerScore,
-      'isPlayerTurn': isPlayerTurn,
+      'updatedAt': updatedAt.toIso8601String(),
+      'game_code': id,
+      'isGameOver': isGameOver,
+      'bag': bag.toJson(),
+      'players': players.map((p) => p.toJson()).toList(),
+      'playerTurn': playerTurn,
+      'boardState': boardState.toJson(),
+
       'lastPlayedWord': lastPlayedWord != null ? {
         'word': lastPlayedWord!.word,
         'points': lastPlayedWord!.points
       } : null,
-      'boardState': boardState.toJson(),
-      'playerRack': playerRack.toJson(),
-      'computerRack': computerRack,
-      'bag': bag.toJson(),
-      'isGameOver': isGameOver,
+      'playerRack': localSave ? playerRack.toJson() : null,
+      'localPlayer': localSave ? localPlayer : null,
     };
   }
 
-  GameSession.fromJson(Map<String, dynamic> json)
-    : createdAt = DateTime.parse(json['createdAt']),
-      playerScore = json['playerScore'],
-      computerScore = json['computerScore'],
-      isPlayerTurn = json['isPlayerTurn'],
-      isGameOver = json['isGameOver'],
-      computerRack = List<String>.from(json['computerRack']) {
-        boardState = BoardState.fromJson(json['boardState']);
+  GameSession.fromJson(Map<String, dynamic> json) {
+      updatedAt = DateTime.parse(json['updatedAt']);
+      id = json['game_code'];
+      isGameOver = json['isGameOver'];
+      bag = LetterBag.fromJson(json['bag']);
+      for (var playerInfo in json['players']) {
+        players.add(PlayerInfo.fromJson(playerInfo));
+      }
+      playerTurn = json['playerTurn'];
+      localPlayer = json['localPlayer'];
+      boardState = BoardState.fromJson(json['boardState']);
+      if (json['playerRack'] != null) {
         playerRack = RackState.fromJson(json['playerRack']);
-        if (json['lastPlayedWord'] != null) {
-          lastPlayedWord = PlayableWord(json['lastPlayedWord']['word'], []);
-          lastPlayedWord!.points = json['lastPlayedWord']['points'];
-        }
-        bag = LetterBag.fromJson(json['bag']);
+      }
+      if (json['lastPlayedWord'] != null) {
+        lastPlayedWord = PlayableWord(json['lastPlayedWord']['word'], []);
+        lastPlayedWord!.points = json['lastPlayedWord']['points'];
+      }
   }
-
 }
 
 class LetterBag {
@@ -184,4 +194,26 @@ class LetterBag {
   LetterBag.fromJson(Map<String, dynamic> json) {
     _letters = List<String>.from(json['letters']);
   }
+}
+
+class PlayerInfo {
+  String name;
+  int score = 0;
+  List<String> rack = [];
+  int? leftGroupLength;
+
+  PlayerInfo(this.name);
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'score': score,
+      'rack': rack,
+    };
+  }
+
+  PlayerInfo.fromJson(Map<String, dynamic> json)
+      : name = json['name'],
+        score = json['score'],
+        rack = List<String>.from(json['rack']);
 }

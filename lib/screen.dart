@@ -107,7 +107,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             // Dernier mot joué
             if (session.lastPlayedWord != null)
               Text(
-                '${session.isPlayerTurn ? 'IA :' : 'Vous :'} ${session.lastPlayedWord!.word.toUpperCase()} (${session.lastPlayedWord!.points} points)',
+                '${session.players[session.playerTurn].name} ${session.lastPlayedWord!.word.toUpperCase()} (${session.lastPlayedWord!.points} points)',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -270,15 +270,31 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
         builder: (context, appState, _) {
           final session = appState.currentSession;
 
-          // Partie terminée
-          if (session != null && session.isGameOver) {
+          if (session == null) {
             return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Scrabble Assistant',
+                  style: TextStyle(fontSize: 18),
+                ),
+                const SizedBox(),
+              ],
+            );
+          }
+
+          final player = session.players[session.localPlayer];
+          final opponent = session.players[1 - session.localPlayer]; // Deux joueurs pour l'instant
+
+          return session.isGameOver
+          // Partie terminée
+          ? Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  session.playerScore > session.computerScore
+                  player.score > opponent.score
                     ? "Victoire ! 🎉" 
-                    : session.playerScore < session.computerScore
+                    : player.score < opponent.score
                       ? "Défaite 🤖" 
                       : "Match nul 🔄",
                   style: const TextStyle(
@@ -289,33 +305,39 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(width: 16),
                 Text(
-                  '${session.playerScore} - ${session.computerScore}',
+                  '${player.score} - ${opponent.score}',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 16,
                   ),
                 ),
               ],
-            );
-          }
-
-          return session != null
-            ? Row(
+            )
+          : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildScoreDisplay("Vous", session.playerScore, session.isPlayerTurn),
+                  // Partie en ligne - afficher le code
+                  if (session.isOnline) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Code: ${session.id}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                  ],
+                  _buildScoreDisplay(player.name, player.score, session.localPlayer == session.playerTurn),
                   const SizedBox(width: 24),
-                  _buildScoreDisplay("IA", session.computerScore, !session.isPlayerTurn),
-                ],
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Scrabble Assistant',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                  const SizedBox(),
+                  _buildScoreDisplay(opponent.name, opponent.score, session.localPlayer != session.playerTurn),
                 ],
               );
         },
@@ -358,7 +380,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
           // Mode jeu
           if (session.isGameOver) return const SizedBox.shrink();
           bool hasPlacedLetters = boardState.tempLetters.isNotEmpty;
-          bool isPlayerTurn = session.isPlayerTurn;
+          bool isPlayerTurn = session.playerTurn == session.localPlayer;
           final placedWord = boardState.placedWord;
           
           return Container(
@@ -617,79 +639,123 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
   );
 }
 
-  void _showSettingsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text(
-                'Paramètres',
-                style: TextStyle(
-                  color: Colors.brown[800],
-                  fontWeight: FontWeight.bold,
-                ),
+void _showSettingsDialog(BuildContext context) {
+  final TextEditingController nameController = TextEditingController(
+    text: context.read<AppState>().playerName
+  );
+
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(
+              'Paramètres',
+              style: TextStyle(
+                color: Colors.brown[800],
+                fontWeight: FontWeight.bold,
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Type de plateau',
-                    style: TextStyle(
-                      color: Colors.brown[700],
-                      fontWeight: FontWeight.w500,
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Section nom du joueur
+                Text(
+                  'Nom du joueur',
+                  style: TextStyle(
+                    color: Colors.brown[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    hintText: 'Entrez votre nom',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.brown[700]!),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  RadioListTile<String>(
-                    title: const Text('Scrabble classique'),
-                    value: 'scrabble',
-                    groupValue: BoardState.defaultBoardType,
-                    activeColor: Colors.brown[700],
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (String? value) {
-                      if (value != null) {
-                        setState(() {
-                          BoardState.defaultBoardType = value;
-                        });
-                      }
-                    },
-                  ),
-                  RadioListTile<String>(
-                    title: const Text('7 lettres pour 1 mot'),
-                    value: 'mywordgame',
-                    groupValue: BoardState.defaultBoardType,
-                    activeColor: Colors.brown[700],
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (String? value) {
-                      if (value != null) {
-                        setState(() {
-                          BoardState.defaultBoardType = value;
-                        });
-                      }
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text(
-                    'OK',
-                    style: TextStyle(color: Colors.brown[700]),
+                  maxLength: 20,
+                ),
+                const SizedBox(height: 16),
+                
+                // Section type de plateau
+                Text(
+                  'Type de plateau',
+                  style: TextStyle(
+                    color: Colors.brown[700],
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+                const SizedBox(height: 8),
+                RadioListTile<String>(
+                  title: const Text('Scrabble classique'),
+                  value: 'scrabble',
+                  groupValue: BoardState.defaultBoardType,
+                  activeColor: Colors.brown[700],
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (String? value) {
+                    if (value != null) {
+                      setState(() {
+                        BoardState.defaultBoardType = value;
+                      });
+                    }
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('7 lettres pour 1 mot'),
+                  value: 'mywordgame',
+                  groupValue: BoardState.defaultBoardType,
+                  activeColor: Colors.brown[700],
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (String? value) {
+                    if (value != null) {
+                      setState(() {
+                        BoardState.defaultBoardType = value;
+                      });
+                    }
+                  },
+                ),
               ],
-            );
-          },
-        );
-      },
-    );
-  }
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text(
+                  'Annuler',
+                  style: TextStyle(color: Colors.brown[400]),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  context.read<AppState>().playerName = nameController.text.trim();
+                  Navigator.of(context).pop();
+                },
+                child: Text(
+                  'OK',
+                  style: TextStyle(color: Colors.brown[700]),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
   Widget _buildSessionList(AppState appState) {
     return Expanded(
@@ -718,15 +784,19 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             final isCurrentSession = appState.currentSession == session;
             
             return _buildSessionTile(
-              title: 'Partie #${index + 1}',
-              subtitle: 'Créée le ${_formatDate(session.createdAt)}',
-              leading: Text(
-                '${session.playerScore}-${session.computerScore}',
-                style: TextStyle(
-                  color: Colors.brown[800],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              title: session.isOnline 
+                ? 'Partie en ligne ${session.id}' 
+                : 'Partie #${index + 1}',
+              subtitle: 'Dernier mot le ${_formatDate(session.updatedAt)}',
+              leading: session.isOnline 
+                ? Icon(Icons.wifi, color: Colors.brown[800])
+                : Text(
+                    '${session.players[session.localPlayer].score}-${session.players[1 - session.localPlayer].score}',
+                    style: TextStyle(
+                      color: Colors.brown[800],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
               isSelected: isCurrentSession,
               onTap: () {
                 appState.switchToSession(index);
@@ -745,14 +815,219 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             ),
             isSelected: false,
             onTap: () {
-              appState.createNewSession();
-              Navigator.pop(context);
+              // appState.createNewSession();
+              Navigator.pop(context); // fermer le drawer
+              _showNewGameDialog(context);
             },
           ),
         ],
       ),
     );
   }
+
+  void _showNewGameDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        title: Text(
+          'Nouvelle partie',
+          style: TextStyle(
+            color: Colors.brown[800],
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Partie contre l'ordinateur
+            ListTile(
+              leading: Icon(
+                Icons.computer,
+                color: Colors.brown[700],
+                size: 32,
+              ),
+              title: const Text(
+                'Contre l\'ordinateur',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              subtitle: const Text('Jouez une partie classique contre l\'IA'),
+              onTap: () {
+                Navigator.of(dialogContext).pop();
+                context.read<AppState>().addSession(GameSession(context.read<AppState>().playerName));
+              },
+            ),
+            
+            const Divider(),
+            
+            /// Créer une partie en ligne
+            ListTile(
+              leading: Icon(
+                Icons.wifi,
+                color: Colors.brown[700],
+                size: 32,
+              ),
+              title: const Text(
+                'Créer une partie en ligne',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              subtitle: const Text('Générez un code pour inviter un ami'),
+              onTap: () async {
+                Navigator.of(dialogContext).pop();
+                try {
+                  await context.read<AppState>().createOnlineSession();
+                } catch (e) {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Erreur'),
+                      content: Text('Erreur de connexion: $e'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              },
+            ),
+              
+              const Divider(),
+              
+              // Rejoindre une partie
+              ListTile(
+                leading: Icon(
+                  Icons.login,
+                  color: Colors.brown[700],
+                  size: 32,
+                ),
+                title: const Text(
+                  'Rejoindre une partie',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text('Entrez le code d\'une partie existante'),
+                onTap: () {
+                  Navigator.of(dialogContext).pop();
+                  _showJoinGameDialog(context);
+                },
+              ),
+            ],
+          ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            child: Text(
+              'Annuler',
+              style: TextStyle(color: Colors.brown[400]),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+
+
+void _showJoinGameDialog(BuildContext context) {
+  final TextEditingController codeController = TextEditingController();
+
+  showDialog(
+    context: context,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        title: Text(
+          'Rejoindre une partie',
+          style: TextStyle(
+            color: Colors.brown[800],
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.login,
+              size: 64,
+              color: Colors.brown[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Entrez le code de la partie',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.brown[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeController,
+              decoration: InputDecoration(
+                hintText: 'Code de la partie',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.brown[700]!),
+                ),
+                prefixIcon: Icon(
+                  Icons.vpn_key,
+                  color: Colors.brown[600],
+                ),
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 6,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            child: Text(
+              'Annuler',
+              style: TextStyle(color: Colors.brown[400]),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final code = codeController.text.trim();
+              if (code.isNotEmpty) {
+                Navigator.of(dialogContext).pop();
+                context.read<AppState>().joinSession(code);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Tentative de connexion à la partie $code...'),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.brown[600],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Rejoindre'),
+          ),
+        ],
+      );
+    },
+  );
+}
 
    Widget _buildSessionTile({
     String title = 'Mode Recherche',

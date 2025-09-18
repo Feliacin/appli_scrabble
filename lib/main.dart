@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/game_sync_service.dart';
 import 'package:appli_scrabble/screen.dart';
 import 'package:appli_scrabble/game_session.dart';
 import 'package:flutter/material.dart'; 
@@ -52,6 +53,9 @@ class AppState extends ChangeNotifier {
   List<PlayableWord> _wordSuggestions = [];
   final List<GameSession> _sessions = [];
   int? _currentSessionIndex;
+  String playerName = 'Joueur';
+
+  final GameSyncService _syncService = GameSyncService();
 
   List<PlayableWord> get wordSuggestions => _wordSuggestions;
   List<GameSession> get sessions => _sessions;
@@ -60,16 +64,48 @@ class AppState extends ChangeNotifier {
   GameSession? get currentSession => 
   _currentSessionIndex != null ? _sessions[_currentSessionIndex!] : null;
 
+  AppState() {
+    _syncService.addSession = addSession;
+    _syncService.updateSession = updateSession;
+    _updatePolling();
+  }
+
+  void _updatePolling() {
+    _syncService.startPolling(_sessions);
+  }
+
   set isSearchMode(bool value) {
     _currentSessionIndex = value ? null : _currentSessionIndex;
     notifyListeners();
   }
 
-  void createNewSession() {
-    final session = GameSession();
+  void updateSession (GameSession updatedSession) {
+    final index = _sessions.indexWhere((s) => s.id == updatedSession.id);
+      // Préserver le localPlayer et le rack de la session existante
+      updatedSession.localPlayer = _sessions[index].localPlayer;
+      updatedSession.playerRack = _sessions[index].playerRack;
+      
+      // Remplacer la session
+      _sessions[index] = updatedSession;
+      
+      _updatePolling();
+      notifyListeners();
+  }
+
+  void addSession(GameSession session) {
     _sessions.add(session);
     _currentSessionIndex = _sessions.length - 1;
+
+    _updatePolling();
     notifyListeners();
+  }
+
+  Future<void> createOnlineSession() async {
+    await _syncService.createGame(playerName);
+  }
+
+  Future<void> joinSession(String gameCode) async {
+    await _syncService.joinGame(playerName, gameCode);
   }
 
   void deleteSession(int index) {
@@ -79,6 +115,7 @@ class AppState extends ChangeNotifier {
     } else if (_currentSessionIndex != null && _currentSessionIndex! > index) {
       _currentSessionIndex = _currentSessionIndex! - 1;
     }
+    _updatePolling();
     notifyListeners();
   }
 
@@ -109,10 +146,11 @@ class AppState extends ChangeNotifier {
 
   await prefs.setString('searchBoard', jsonEncode(searchBoard.toJson()));
   await prefs.setString('defaultBoardType', BoardState.defaultBoardType);
+  await prefs.setString('playerName', playerName);
 
   List<Map<String, dynamic>> sessionsData =
       _sessions.map((session) {
-        return session.toJson();
+        return session.toJson(localSave: true);
       }).toList();
   await prefs.setString('app_sessions', jsonEncode(sessionsData));
 
@@ -131,6 +169,7 @@ class AppState extends ChangeNotifier {
       searchBoard = BoardState.fromJson(jsonDecode(searchBoardJson));
     }
     BoardState.defaultBoardType = prefs.getString('defaultBoardType') ?? 'scrabble';
+    playerName = prefs.getString('playerName') ?? 'Joueur';
 
     String? sessionsJson = prefs.getString('app_sessions');
     if (sessionsJson != null) {
