@@ -83,6 +83,7 @@ class AppState extends ChangeNotifier {
     final index = _sessions.indexWhere((s) => s.id == updatedSession.id);
       // Préserver le localPlayer et le rack de la session existante
       updatedSession.localPlayer = _sessions[index].localPlayer;
+      _sessions[index].returnLettersToRack();
       updatedSession.playerRack = _sessions[index].playerRack;
       
       // Remplacer la session
@@ -106,6 +107,13 @@ class AppState extends ChangeNotifier {
 
   Future<void> joinSession(String gameCode) async {
     await _syncService.joinGame(playerName, gameCode);
+  }
+
+  Future<void> sendMove() async {
+    if (currentSession != null && currentSession!.isOnline) {
+      currentSession!.updatedAt = DateTime.now();
+      await _syncService.sendGameUpdate(currentSession!);
+    }
   }
 
   void deleteSession(int index) {

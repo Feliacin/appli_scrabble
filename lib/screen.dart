@@ -1,4 +1,5 @@
 import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/board_scanner.dart';
 import 'package:appli_scrabble/game_session.dart';
 import 'package:appli_scrabble/keyboard.dart';
 import 'package:appli_scrabble/main.dart';
@@ -7,8 +8,6 @@ import 'package:appli_scrabble/tile.dart';
 import 'package:appli_scrabble/wordsuggestions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-import 'board_scanner.dart';
 
 class Screen extends StatefulWidget {
   const Screen({super.key});
@@ -433,6 +432,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
                   : hasPlacedLetters && placedWord != null
                       ? () {
                           session.playerPlays(placedWord);
+                          appState.sendMove();
                           setState(() {});
                         }
                       : () {
@@ -875,7 +875,7 @@ void _showSettingsDialog(BuildContext context) {
               onTap: () async {
                 Navigator.of(dialogContext).pop();
                 try {
-                  await context.read<AppState>().createOnlineSession();
+                  await context.read<AppState>().createOnlineSession();                  
                 } catch (e) {
                   showDialog(
                     context: context,

@@ -1,10 +1,9 @@
 import 'dart:math';
 
+import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/rack.dart';
 import 'package:appli_scrabble/useful_classes.dart';
 import 'package:appli_scrabble/wordsuggestions.dart';
-
-import 'board.dart';
-import 'rack.dart';
 
 class GameSession {
   DateTime updatedAt = DateTime.now();
@@ -61,7 +60,7 @@ class GameSession {
     }
     boardState.updatePossibleLetters();
     _nextTurn();
-    }
+  }
 
   void computerPlays() {
     returnLettersToRack();
