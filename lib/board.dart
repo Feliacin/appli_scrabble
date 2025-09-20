@@ -60,26 +60,25 @@ class Board extends StatelessWidget {
 
 class BoardState extends ChangeNotifier {
   static const int boardSize = 15;
+  static String defaultBoardType = 'scrabble';
 
   int? _selectedIndex;
+  bool _isVertical = false;
+  String _boardType = defaultBoardType; 
+
+  List<Position> _blanks = [];
+  List<Position> _tempLetters = [];
+
   List<List<String?>> _letters;
-  List<Position> _blanks;
-  bool _isVertical;
-  final String _boardType;
-  static String defaultBoardType = 'scrabble';
-  List<Position> _tempLetters;
   final List<List<String>> _specialPositions;
   List<List<PossibleLetters>> possibleLetters;
   PlayableWord? _highlightedWord;
 
-  BoardState(): 
-    _letters = List.generate(boardSize, (_) => List.filled(boardSize, null)),
-    _blanks = [],
-    _tempLetters = [],
-    _isVertical = false,
-    _boardType = defaultBoardType,
-    _specialPositions = _initializeSpecialPositions(defaultBoardType),
-    possibleLetters = List.generate(boardSize, (_) => List.generate(boardSize, (_) => PossibleLetters()));
+  BoardState()
+      : _letters = List.generate(boardSize, (_) => List.filled(boardSize, null)),
+        _specialPositions = _initializeSpecialPositions(defaultBoardType),
+        possibleLetters = List.generate(
+            boardSize, (_) => List.generate(boardSize, (_) => PossibleLetters()));
 
   // Getters
   int? get selectedIndex => _selectedIndex;
@@ -449,21 +448,18 @@ class BoardState extends ChangeNotifier {
   }
 
   // Sauvegarde et restauration de l'état
-  Map<String, dynamic> toJson() {
-    return {
+  Map<String, dynamic> toJson() => {
       'letters': _letters.map((row) => row.map((letter) => letter ?? '').toList()).toList(),
       'blanks': _blanks.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
       'tempLetters': _tempLetters.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
       'boardType': _boardType,
     };
-  }
 
   BoardState.fromJson(Map<String, dynamic> json)
     : _letters = (json['letters'] as List).map((row) =>
         (row as List).map((letter) => letter == '' ? null : letter as String).toList()).toList(),
       _blanks = (json['blanks'] as List).map((e) => Position(e['row'], e['col'])).toList(),
       _tempLetters = (json['tempLetters'] as List).map((e) => Position(e['row'], e['col'])).toList(),
-      _isVertical = false,
       _boardType = json['boardType'],
       _specialPositions = _initializeSpecialPositions(json['boardType']),
       possibleLetters = [] {

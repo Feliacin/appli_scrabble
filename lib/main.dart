@@ -123,6 +123,7 @@ class AppState extends ChangeNotifier {
     } else if (_currentSessionIndex != null && _currentSessionIndex! > index) {
       _currentSessionIndex = _currentSessionIndex! - 1;
     }
+    
     _updatePolling();
     notifyListeners();
   }

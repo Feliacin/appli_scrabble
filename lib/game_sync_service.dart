@@ -5,7 +5,7 @@ import 'game_session.dart';
 
 class GameSyncService {
   static const String baseUrl = 'http://app.microclic.com/api.php';
-  static const Duration pollInterval = Duration(seconds: 3);
+  static const Duration pollInterval = Duration(seconds: 10);
   
   Timer? _pollTimer;
   final Map<String, DateTime> _lastUpdated = {};
@@ -19,6 +19,7 @@ class GameSyncService {
   
   Future<Map<String, dynamic>> _makeRequest(Map<String, dynamic> data) async {
     try {
+      jsonEncode(data);
       final response = await http.post(
         Uri.parse(baseUrl),
         headers: {'Content-Type': 'application/json'},
@@ -30,7 +31,7 @@ class GameSyncService {
         final errorMessage = errorData['error'] ?? 'Erreur serveur: ${response.statusCode}';
         throw Exception(errorMessage);
       }
-      
+
       return jsonDecode(response.body);
     } catch (e) {
       throw Exception('Erreur de requête: $e');
@@ -53,7 +54,7 @@ class GameSyncService {
       'game_code': gameCode
     });
     
-    final session = GameSession.fromJson(result['game_data']);
+    final session = GameSession.fromJson(jsonDecode(result['game_data']));
     session.addPlayer(playerName);
     session.localPlayer = session.players.length - 1;
     addSession!(session);
@@ -67,7 +68,7 @@ class GameSyncService {
       'action': 'update_game',
       'game_code': session.id!,
       'game_status': isWaiting ? 'waiting' : (session.isGameOver ? 'finished' : 'running'),
-      'game_data': session.toJson(localSave: false),
+      'game_data': jsonEncode(session.toJson(localSave: false)),
       'updated_at': session.updatedAt.toIso8601String(),
     });
   }
@@ -80,21 +81,22 @@ class GameSyncService {
           'updated_at': s.updatedAt.toIso8601String(),
         })
         .toList();
-    
+
     if (sessionInfos.isEmpty) return;
-    
+
     final result = await _makeRequest({
       'action': 'sync_games',
       'sessions': sessionInfos,
     });
-    
+
     final updatedGames = result['updated_games'] as List<dynamic>? ?? [];
-    
+
     for (final gameData in updatedGames) {
+      final session = GameSession.fromJson(jsonDecode(gameData));
       try {
-        updateSession!(GameSession.fromJson(gameData));
+        updateSession!(session);
       } catch (e) {
-        throw Exception('Erreur lors de la mise à jour de ${gameData['game_code']}: $e');
+        throw Exception('Erreur lors de la mise à jour de ${session.id}: $e');
       }
     }
   }

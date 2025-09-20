@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math';
@@ -351,17 +353,18 @@ class RackState extends ChangeNotifier {
   }
 
   // Sauvegarde et restauration de l'état
-  Map<String, dynamic> toJson() {
-    return {
+  String toJson() {
+    return jsonEncode({
       'letters': letters,
       'leftGroupLength': _leftGroupLength,
-    };
+    });
   }
 
-  RackState.fromJson(Map<String, dynamic> json)
-    : letters = List<String>.from(json['letters']) {
+  RackState.fromJson(String json) {
+      final data = jsonDecode(json);
+      letters = List<String>.from(data['letters']);
       keys = List.generate(letters.length, (index) => index);
-      _leftGroupLength = json['leftGroupLength'];
+      _leftGroupLength = data['leftGroupLength'];
   }
 }
 

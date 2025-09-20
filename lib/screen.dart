@@ -283,7 +283,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
           }
 
           final player = session.players[session.localPlayer];
-          final opponent = session.players[1 - session.localPlayer]; // Deux joueurs pour l'instant
+          final opponent = session.players.length > 1 ? session.players[1 - session.localPlayer] : null; // Deux joueurs pour l'instant
 
           return session.isGameOver
           // Partie terminée
@@ -291,7 +291,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  player.score > opponent.score
+                  player.score > opponent!.score
                     ? "Victoire ! 🎉" 
                     : player.score < opponent.score
                       ? "Défaite 🤖" 
@@ -336,7 +336,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
                   ],
                   _buildScoreDisplay(player.name, player.score, session.localPlayer == session.playerTurn),
                   const SizedBox(width: 24),
-                  _buildScoreDisplay(opponent.name, opponent.score, session.localPlayer != session.playerTurn),
+                  opponent != null ? _buildScoreDisplay(opponent.name, opponent.score, session.localPlayer != session.playerTurn) : const SizedBox(),
                 ],
               );
         },
@@ -881,7 +881,7 @@ void _showSettingsDialog(BuildContext context) {
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Erreur'),
-                      content: Text('Erreur de connexion: $e'),
+                      content: Text(e.toString()),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.of(context).pop(),
