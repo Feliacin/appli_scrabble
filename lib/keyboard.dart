@@ -8,9 +8,18 @@ import 'package:provider/provider.dart';
 class Keyboard extends StatelessWidget {
   final bool letterPicker;
   final Map<String, int> letterPoints;
-  const Keyboard(this.letterPoints, {super.key, this.letterPicker = false});
+  final Function(String)? onLetterPressed;
+  const Keyboard(this.letterPoints, {
+    super.key, 
+    this.letterPicker = false,
+    this.onLetterPressed
+    });
 
   void _handleLetterPress(BuildContext context, String letter) {
+    if (onLetterPressed != null) {
+      onLetterPressed!(letter); // <-- Appel de la nouvelle fonction de rappel
+      return;
+    }
       if (letterPicker) {
         Navigator.of(context).pop(letter);
         return;
@@ -37,6 +46,10 @@ class Keyboard extends StatelessWidget {
   }
 
   void _handleBackspace(BuildContext context) {
+    if (onLetterPressed != null) {
+      onLetterPressed!('⌫'); // <-- Appel de la nouvelle fonction pour le retour
+      return;
+    }
     final rackState = context.read<RackState>();
     final boardState = context.read<BoardState>();
     

@@ -70,6 +70,10 @@ class AppState extends ChangeNotifier {
     _updatePolling();
   }
 
+  void refresh() {
+    notifyListeners();
+  }
+
   void _updatePolling() {
     _syncService.startPolling(_sessions);
   }
