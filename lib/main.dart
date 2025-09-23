@@ -85,16 +85,17 @@ class AppState extends ChangeNotifier {
 
   void updateSession (GameSession updatedSession) {
     final index = _sessions.indexWhere((s) => s.id == updatedSession.id);
-      // Préserver le localPlayer et le rack de la session existante
-      updatedSession.localPlayer = _sessions[index].localPlayer;
-      _sessions[index].returnLettersToRack();
-      updatedSession.playerRack = _sessions[index].playerRack;
-      
-      // Remplacer la session
-      _sessions[index] = updatedSession;
-      
-      _updatePolling();
-      notifyListeners();
+
+    // Préserver le localPlayer et le rack de la session existante
+    updatedSession.localPlayer = _sessions[index].localPlayer;
+    _sessions[index].returnLettersToRack();
+    updatedSession.playerRack = _sessions[index].playerRack;
+    
+    // Remplacer la session
+    _sessions[index] = updatedSession;
+    
+    _updatePolling();
+    notifyListeners();
   }
 
   void addSession(GameSession session) {
@@ -120,14 +121,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void deleteSession(int index) {
+  Future<void> deleteSession(int index) async {
+    if (_sessions[index].isOnline) {
+      await _syncService.leaveGame(_sessions[index].id!);
+    }
     _sessions.removeAt(index);
     if (_currentSessionIndex == index) {
       _currentSessionIndex = _sessions.isEmpty ? null : 0;
     } else if (_currentSessionIndex != null && _currentSessionIndex! > index) {
       _currentSessionIndex = _currentSessionIndex! - 1;
     }
-    
+
     _updatePolling();
     notifyListeners();
   }

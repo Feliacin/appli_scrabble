@@ -9,16 +9,60 @@ class GameSession {
   DateTime updatedAt = DateTime.now();
   String? id;
   List<PlayerInfo> players = [];
-  int localPlayer = 0;
   int playerTurn = 0;
   BoardState boardState = BoardState();
-  RackState playerRack = RackState();
   LetterBag bag = LetterBag('scrabble');
   PlayableWord? lastPlayedWord;
   bool isGameOver = false;
 
+  int localPlayer = 0;
+  RackState playerRack = RackState();
+
+  Map<String, dynamic> toJson({required bool localSave}) => {
+    'updatedAt': updatedAt.toString(),
+    'game_code': id,
+    'players': players.map((p) => p.toJson()).toList(),
+    'playerTurn': playerTurn,
+    'boardState': boardState.toJson(),
+    'bag': bag.toJson(),
+    'lastPlayedWord': lastPlayedWord != null ? {
+      'word': lastPlayedWord!.word,
+      'points': lastPlayedWord!.points
+    } : null,
+    'isGameOver': isGameOver,
+
+    // Sauvegarde locale uniquement
+    'localPlayer': localSave ? localPlayer : null,
+    'playerRack': localSave ? playerRack.toJson() : null,
+  };
+
+  GameSession.fromJson(Map<String, dynamic> json)
+  : updatedAt = DateTime.parse(json['updatedAt']),
+    id = json['game_code'],
+    players = (json['players'] as List).map((p) => PlayerInfo.fromJson(p)).toList(),
+    playerTurn = json['playerTurn'],
+    boardState = BoardState.fromJson(json['boardState']),
+    bag = LetterBag.fromJson(json['bag']),
+    isGameOver = json['isGameOver'] {
+
+  if (json['lastPlayedWord'] != null) {
+    lastPlayedWord = PlayableWord(json['lastPlayedWord']['word'], [])
+      ..points = json['lastPlayedWord']['points'];
+  }
+
+  if (json['localPlayer'] != null) {
+    localPlayer = json['localPlayer'];
+  }
+
+  if (json['playerRack'] != null) {
+    playerRack = RackState.fromJson(json['playerRack']);
+  }
+}
+
+
   void _nextTurn() {
     playerTurn = (playerTurn + 1) % players.length;
+    updatedAt = DateTime.now();
   }
   bool get isOnline => id != null;
 
@@ -39,6 +83,7 @@ class GameSession {
       }
     }
     players.add(newPlayer);
+    updatedAt = DateTime.now();
   }
 
   void returnLettersToRack() {
@@ -119,47 +164,6 @@ class GameSession {
           players[firstFinisher].score += pointValues[letter] ?? 0;
         }
       }
-    }
-  }
-
-  Map<String, dynamic> toJson({required bool localSave}) {
-    return {
-      'updatedAt': updatedAt.toIso8601String(),
-      'game_code': id,
-      'isGameOver': isGameOver,
-      'bag': bag.toJson(),
-      'players': players.map((p) => p.toJson()).toList(),
-      'playerTurn': playerTurn,
-      'boardState': boardState.toJson(),
-
-      'lastPlayedWord': lastPlayedWord != null ? {
-        'word': lastPlayedWord!.word,
-        'points': lastPlayedWord!.points
-      } : null,
-      'playerRack': localSave ? playerRack.toJson() : null,
-      'localPlayer': localSave ? localPlayer : null,
-    };
-  }
-
-  GameSession.fromJson(Map<String, dynamic> json) {
-    updatedAt = DateTime.parse(json['updatedAt']);
-    id = json['game_code'];
-    isGameOver = json['isGameOver'];
-    bag = LetterBag.fromJson(json['bag']);
-    for (var playerInfo in json['players']) {
-      players.add(PlayerInfo.fromJson(playerInfo));
-    }
-    playerTurn = json['playerTurn'];
-    if (json['localPlayer'] != null) {
-      localPlayer = json['localPlayer'];
-    }
-    boardState = BoardState.fromJson(json['boardState']);
-    if (json['playerRack'] != null) {
-      playerRack = RackState.fromJson(json['playerRack']);
-    }
-    if (json['lastPlayedWord'] != null) {
-      lastPlayedWord = PlayableWord(json['lastPlayedWord']['word'], []);
-      lastPlayedWord!.points = json['lastPlayedWord']['points'];
     }
   }
 }

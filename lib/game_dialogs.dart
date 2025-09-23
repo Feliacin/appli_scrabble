@@ -175,7 +175,7 @@ static void showNewGameDialog(BuildContext screenContext, AppState appState) {
                       try {
                         await appState.createOnlineSession();
                       } catch (e) {
-                        ScaffoldMessenger.of(screenContext).showSnackBar(
+                        ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(e.toString()),
                             backgroundColor: Colors.red,
@@ -232,13 +232,6 @@ static void showNewGameDialog(BuildContext screenContext, AppState appState) {
                               final code = codeController.text.trim();
                               Navigator.of(dialogContext).pop();
                               appState.joinSession(code);
-                              ScaffoldMessenger.of(screenContext).showSnackBar(
-                                SnackBar(
-                                  content: Text('Tentative de connexion à la partie $code...'),
-                                  backgroundColor: Colors.brown,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
                             }
                           : null,
                       style: ElevatedButton.styleFrom(
@@ -262,7 +255,7 @@ static void showNewGameDialog(BuildContext screenContext, AppState appState) {
 
                   Keyboard(
                     letterPoints,
-                    onLetterPressed: (String letter) {
+                    (String letter) {
                       setState(() {
                         if (letter.toLowerCase() == '⌫') {
                           if (codeController.text.isNotEmpty) {
@@ -273,6 +266,7 @@ static void showNewGameDialog(BuildContext screenContext, AppState appState) {
                         }
                       });
                     },
+                    withBlank: false
                   ),
                 ],
               ),

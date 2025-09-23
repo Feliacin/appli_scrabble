@@ -4,6 +4,7 @@ import 'package:appli_scrabble/main.dart';
 import 'package:appli_scrabble/rack.dart';
 import 'package:appli_scrabble/game_bar.dart';
 import 'package:appli_scrabble/main_drawer.dart';
+import 'package:appli_scrabble/useful_classes.dart';
 import 'package:appli_scrabble/wordsuggestions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -151,8 +152,8 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
   }
 
   Widget _buildGameArea() {
-    return Consumer<AppState>(
-      builder: (context, appState, _) {
+    return Consumer3<AppState, BoardState, RackState>(
+      builder: (context, appState, boardState, rackState, _) {
         final suggestions = appState.wordSuggestions;
         final isGameMode = appState.currentSession != null;
         
@@ -169,12 +170,41 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Rack(),
-            if (!isGameMode) Keyboard(context.read<BoardState>().letterPoints),
+            if (!isGameMode) Keyboard(boardState.letterPoints, (String letter) => _onLetterPress(letter, boardState, rackState)),
           ],
         );
       },
     );
-  }  
+  } 
+
+  void _onLetterPress(String letter, BoardState boardState, RackState rackState) {
+    if (rackState.isSelected) {
+      if (letter == '⌫') {
+        rackState.removeLast();
+      } else {
+        rackState.addLetter(letter);
+      }
+    } else if (boardState.selectedIndex != null) {
+      final pos = Position.fromIndex(boardState.selectedIndex!);
+
+      switch (letter) {
+        case '⌫':
+          boardState.removeLetter(pos);
+          boardState.selectedIndex = pos.previous(!boardState.isVertical).index;
+          return;
+        case ' ':
+          if (boardState.letters[pos.row][pos.col] != null) {
+            boardState.toggleBlank(pos);
+          }
+          return;
+        default:
+          boardState.writeLetter(letter, pos);
+          boardState.selectedIndex = pos.next(!boardState.isVertical).index;
+          return;
+      }
+    }
+  }
+  
 
   Widget _buildPortraitLayout() {
     return Column(

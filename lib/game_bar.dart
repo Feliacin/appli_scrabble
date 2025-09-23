@@ -106,9 +106,9 @@ class GameBar extends StatelessWidget implements PreferredSizeWidget {
           }
 
           // Mode jeu
-          if (session.isGameOver) return const SizedBox.shrink();
-          bool hasPlacedLetters = boardState.tempLetters.isNotEmpty;
           bool isPlayerTurn = session.playerTurn == session.localPlayer;
+          if (session.isGameOver || (session.isOnline && !isPlayerTurn)) return const SizedBox.shrink();
+          bool hasPlacedLetters = boardState.tempLetters.isNotEmpty;
           final placedWord = boardState.placedWord;
           
           return Container(

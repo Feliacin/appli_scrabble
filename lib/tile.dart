@@ -171,7 +171,11 @@ class Tile extends StatelessWidget {
         contentPadding: EdgeInsets.all(4),
         content: SizedBox(
           width: MediaQuery.of(context).size.width,
-          child: Keyboard(boardState.letterPoints, letterPicker: true),
+          child: Keyboard(
+            boardState.letterPoints, 
+            (String letter) => Navigator.of(context).pop(letter), 
+            withDelete: false, 
+            withBlank: false),
         ),
       );
     },

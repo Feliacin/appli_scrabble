@@ -113,7 +113,25 @@ class BoardState extends ChangeNotifier {
     _highlightedWord = word;
     notifyListeners();
   }
-  //
+
+  // Sauvegarde et restauration de l'état
+  Map<String, dynamic> toJson() => {
+      'letters': _letters.map((row) => row.map((letter) => letter ?? '').toList()).toList(),
+      'blanks': _blanks.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
+      'tempLetters': _tempLetters.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
+      'boardType': _boardType,
+    };
+
+  BoardState.fromJson(Map<String, dynamic> json)
+    : _letters = (json['letters'] as List).map((row) =>
+        (row as List).map((letter) => letter == '' ? null : letter as String).toList()).toList(),
+      _blanks = (json['blanks'] as List).map((e) => Position(e['row'], e['col'])).toList(),
+      _tempLetters = (json['tempLetters'] as List).map((e) => Position(e['row'], e['col'])).toList(),
+      _boardType = json['boardType'],
+      _specialPositions = _initializeSpecialPositions(json['boardType']),
+      possibleLetters = [] {
+      possibleLetters = PossibleLetters.scan(this);
+  }
 
   static List<List<String>> _initializeSpecialPositions(String type) {
     final List<List<String>> positions =
@@ -446,24 +464,4 @@ class BoardState extends ChangeNotifier {
     }
     return hasConnection;
   }
-
-  // Sauvegarde et restauration de l'état
-  Map<String, dynamic> toJson() => {
-      'letters': _letters.map((row) => row.map((letter) => letter ?? '').toList()).toList(),
-      'blanks': _blanks.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
-      'tempLetters': _tempLetters.map((pos) => {'row': pos.row, 'col': pos.col}).toList(),
-      'boardType': _boardType,
-    };
-
-  BoardState.fromJson(Map<String, dynamic> json)
-    : _letters = (json['letters'] as List).map((row) =>
-        (row as List).map((letter) => letter == '' ? null : letter as String).toList()).toList(),
-      _blanks = (json['blanks'] as List).map((e) => Position(e['row'], e['col'])).toList(),
-      _tempLetters = (json['tempLetters'] as List).map((e) => Position(e['row'], e['col'])).toList(),
-      _boardType = json['boardType'],
-      _specialPositions = _initializeSpecialPositions(json['boardType']),
-      possibleLetters = [] {
-      possibleLetters = PossibleLetters.scan(this);
-  }
-
 }

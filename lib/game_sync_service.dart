@@ -5,7 +5,7 @@ import 'game_session.dart';
 
 class GameSyncService {
   static const String baseUrl = 'http://app.microclic.com/api.php';
-  static const Duration pollInterval = Duration(seconds: 10);
+  static const Duration pollInterval = Duration(seconds: 5);
   
   Timer? _pollTimer;
   final Map<String, DateTime> _lastUpdated = {};
@@ -55,8 +55,8 @@ class GameSyncService {
     });
     
     final session = GameSession.fromJson(jsonDecode(result['game_data']));
+    session.localPlayer = session.players.length;
     session.addPlayer(playerName);
-    session.localPlayer = session.players.length - 1;
     addSession!(session);
     await sendGameUpdate(session);
   }
@@ -69,7 +69,14 @@ class GameSyncService {
       'game_code': session.id!,
       'game_status': isWaiting ? 'waiting' : (session.isGameOver ? 'finished' : 'running'),
       'game_data': jsonEncode(session.toJson(localSave: false)),
-      'updated_at': session.updatedAt.toIso8601String(),
+      'updated_at': session.updatedAt.toString(),
+    });
+  }
+
+  Future<void> leaveGame(String gameCode) async {
+    await _makeRequest({
+      'action': 'leave_game',
+      'game_code': gameCode
     });
   }
 
@@ -78,7 +85,7 @@ class GameSyncService {
         .where((s) => s.isOnline && !s.isGameOver)
         .map((s) => {
           'game_code': s.id!,
-          'updated_at': s.updatedAt.toIso8601String(),
+          'updated_at': s.updatedAt.toString().substring(0, 19) // Trim microseconds
         })
         .toList();
 
@@ -92,6 +99,13 @@ class GameSyncService {
     final updatedGames = result['updated_games'] as List<dynamic>? ?? [];
 
     for (final gameData in updatedGames) {
+      if (gameData['status'] == 'deleted') {
+        final session = sessions.where((s) => s.id == gameData['game_code']).first;
+        session.isGameOver = true;
+        session.id = null; // Marquer comme partie locale
+        continue;
+      }
+
       final session = GameSession.fromJson(jsonDecode(gameData));
       try {
         updateSession!(session);

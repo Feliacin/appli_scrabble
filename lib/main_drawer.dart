@@ -25,7 +25,12 @@ class MainDrawer extends StatelessWidget {
 
   Widget _buildDrawerHeader(BuildContext context, AppState appState) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top, // Ajouter la marge de la zone sûre
+        left: 16,
+        right: 16,
+        bottom: 16,
+      ),
       decoration: BoxDecoration(
         color: Colors.brown[300],
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
@@ -118,22 +123,23 @@ class MainDrawer extends StatelessWidget {
             final index = entry.key;
             final session = entry.value;
             final isCurrentSession = appState.currentSession == session;
+            final scoreDisplay = session.players.length == 2 ?
+              '${session.players[session.localPlayer].score}-${session.players[1 - session.localPlayer].score}'
+              : '';
             
             return _buildSessionTile(
               context,
               title: session.isOnline 
-                ? 'Partie en ligne ${session.id}' 
+                ? 'Partie ${session.id}' 
                 : 'Partie #${index + 1}',
               subtitle: 'Dernier mot le ${_formatDate(session.updatedAt)}',
-              leading: session.isOnline 
-                ? Icon(Icons.wifi, color: Colors.brown[800])
-                : Text(
-                    '${session.players[session.localPlayer].score}-${session.players[1 - session.localPlayer].score}',
-                    style: TextStyle(
-                      color: Colors.brown[800],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+              leading: Text(
+                scoreDisplay,
+                style: TextStyle(
+                  color: Colors.brown[800],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               isSelected: isCurrentSession,
               onTap: () {
                 appState.switchToSession(index);
