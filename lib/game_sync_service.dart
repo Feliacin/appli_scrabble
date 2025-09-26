@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'game_session.dart';
 
 class GameSyncService {
-  static const String baseUrl = 'http://app.microclic.com/api.php';
+  static const String baseUrl = 'https://app.microclic.com/api.php';
   static const Duration pollInterval = Duration(seconds: 5);
   
   Timer? _pollTimer;
@@ -99,7 +99,7 @@ class GameSyncService {
     final updatedGames = result['updated_games'] as List<dynamic>? ?? [];
 
     for (final gameData in updatedGames) {
-      if (gameData['status'] == 'deleted') {
+      if (gameData is Map<String, dynamic> && gameData['status'] == 'deleted') {
         final session = sessions.where((s) => s.id == gameData['game_code']).first;
         session.isGameOver = true;
         session.id = null; // Marquer comme partie locale

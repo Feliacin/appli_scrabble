@@ -1,0 +1,81 @@
+PODS:
+  - DartCvMacOS (4.12.0.0):
+    - DartCvMacOS/calib3d (= 4.12.0.0)
+    - DartCvMacOS/contrib (= 4.12.0.0)
+    - DartCvMacOS/core (= 4.12.0.0)
+    - DartCvMacOS/features2d (= 4.12.0.0)
+    - DartCvMacOS/imgproc (= 4.12.0.0)
+    - DartCvMacOS/objdetect (= 4.12.0.0)
+    - DartCvMacOS/photo (= 4.12.0.0)
+    - DartCvMacOS/stitching (= 4.12.0.0)
+    - DartCvMacOS/video (= 4.12.0.0)
+  - DartCvMacOS/calib3d (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/contrib (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/core (4.12.0.0)
+  - DartCvMacOS/dnn (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/features2d (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/imgproc (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/objdetect (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/photo (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/stitching (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/video (4.12.0.0):
+    - DartCvMacOS/core
+  - DartCvMacOS/videoio (4.12.0.0):
+    - DartCvMacOS/core
+  - file_selector_macos (0.0.1):
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - opencv_dart (0.0.1):
+    - DartCvMacOS (= 4.12.0.0)
+    - DartCvMacOS/dnn (= 4.12.0.0)
+    - DartCvMacOS/videoio (= 4.12.0.0)
+    - FlutterMacOS
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - opencv_dart (from `Flutter/ephemeral/.symlinks/plugins/opencv_dart/macos`)
+  - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
+  - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
+
+SPEC REPOS:
+  trunk:
+    - DartCvMacOS
+
+EXTERNAL SOURCES:
+  file_selector_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  opencv_dart:
+    :path: Flutter/ephemeral/.symlinks/plugins/opencv_dart/macos
+  path_provider_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
+  shared_preferences_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
+
+SPEC CHECKSUMS:
+  DartCvMacOS: febe6cec544670ad68c71da89b9c1b94bd342e48
+  file_selector_macos: 6280b52b459ae6c590af5d78fc35c7267a3c4b31
+  FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
+  opencv_dart: 9adf31b6905f6e9f7e471d3eb6cc1c65a144db84
+  path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
+  shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
+
+PODFILE CHECKSUM: 9ebaf0ce3d369aaa26a9ea0e159195ed94724cf3
+
+COCOAPODS: 1.16.2
