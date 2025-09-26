@@ -1,10 +1,9 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:appli_scrabble/board.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:ui' as ui;
-import 'package:path_provider/path_provider.dart';
-import 'package:image/image.dart' as img;
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 class BoardScanner {
   final ImagePicker _picker = ImagePicker();
@@ -43,196 +42,7 @@ class BoardScanner {
 
     if (pickedFile == null) return;
     final File imageFile = File(pickedFile.path);
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GridAdjustmentScreen(
-          imageFile: imageFile,
-          boardState: boardState,
-        ),
-      ),
-    );
-  }
-}
 
-class GridAdjustmentScreen extends StatefulWidget {
-  final File imageFile;
-  final BoardState boardState;
-
-  const GridAdjustmentScreen({
-    super.key,
-    required this.imageFile,
-    required this.boardState,
-  });
-
-  @override
-  _GridAdjustmentScreenState createState() => _GridAdjustmentScreenState();
-}
-
-class _GridAdjustmentScreenState extends State<GridAdjustmentScreen> {
-  ui.Image? _image;
-  bool _isLoading = true;
-  List<Offset> _cornerPoints = [
-    const Offset(100, 100),
-    const Offset(300, 100),
-    const Offset(300, 300),
-    const Offset(100, 300),
-  ];
-  int? _selectedCornerIndex;
-  
-  // Paramètres de transformation pour l'affichage de l'image
-  double _scale = 1.0;
-  double _dx = 0.0;
-  double _dy = 0.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadImage();
-  }
-
-  Future<void> _loadImage() async {
-    final data = await widget.imageFile.readAsBytes();
-    final codec = await ui.instantiateImageCodec(data);
-    final frame = await codec.getNextFrame();
-    
-    setState(() {
-      _image = frame.image;
-      
-      // Initialiser les coins pour qu'ils couvrent une grande partie de l'image
-      final width = _image!.width.toDouble();
-      final height = _image!.height.toDouble();
-      
-      final padding = min(width, height) * 0.1;
-      
-      _cornerPoints = [
-        Offset(padding, padding), // Top-left
-        Offset(width - padding, padding), // Top-right
-        Offset(width - padding, height - padding), // Bottom-right
-        Offset(padding, height - padding), // Bottom-left
-      ];
-      
-      _isLoading = false;
-    });
-  }
-
-  double min(double a, double b) => a < b ? a : b;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Ajustement de la grille'),
-          backgroundColor: Colors.brown[300],
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Positionnez les 4 coins de la grille sur les bords du plateau'),
-        backgroundColor: Colors.brown[300],
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: _processImage,
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Calculer les paramètres de transformation ici pour pouvoir les utiliser 
-          // dans les gestionnaires d'événements
-          final imageWidth = _image!.width.toDouble();
-          final imageHeight = _image!.height.toDouble();
-          
-          final scaleX = constraints.maxWidth / imageWidth;
-          final scaleY = constraints.maxHeight / imageHeight;
-          _scale = scaleX < scaleY ? scaleX : scaleY;
-          
-          _dx = (constraints.maxWidth - imageWidth * _scale) / 2;
-          _dy = (constraints.maxHeight - imageHeight * _scale) / 2;
-          
-          return GestureDetector(
-            onPanDown: (details) {
-              _selectCorner(details.localPosition);
-            },
-            onPanUpdate: (details) {
-              _moveCorner(details.localPosition);
-            },
-            onPanEnd: (_) {
-              setState(() {
-                _selectedCornerIndex = null;
-              });
-            },
-            child: CustomPaint(
-              size: Size(constraints.maxWidth, constraints.maxHeight),
-              painter: GridPainter(
-                image: _image!,
-                cornerPoints: _cornerPoints,
-                selectedCornerIndex: _selectedCornerIndex,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // Convertit une position d'écran en coordonnées d'image originale
-  Offset _screenToImageCoordinates(Offset screenPosition) {
-    return Offset(
-      (screenPosition.dx - _dx) / _scale,
-      (screenPosition.dy - _dy) / _scale,
-    );
-  }
-  
-  // Convertit des coordonnées d'image originale en position d'écran
-  Offset _imageToScreenCoordinates(Offset imagePosition) {
-    return Offset(
-      imagePosition.dx * _scale + _dx,
-      imagePosition.dy * _scale + _dy,
-    );
-  }
-
-  void _selectCorner(Offset screenPosition) {
-    final double touchRadius = 40.0;
-    int? closestCornerIndex;
-    double closestDistance = touchRadius;
-
-    for (int i = 0; i < _cornerPoints.length; i++) {
-      // Convertir le point de coin en coordonnées d'écran pour la comparaison
-      final cornerScreenPos = _imageToScreenCoordinates(_cornerPoints[i]);
-      final distance = (screenPosition - cornerScreenPos).distance;
-      
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestCornerIndex = i;
-      }
-    }
-
-    setState(() {
-      _selectedCornerIndex = closestCornerIndex;
-    });
-  }
-
-  void _moveCorner(Offset screenPosition) {
-    if (_selectedCornerIndex != null) {
-      // Convertir la position d'écran en coordonnées d'image
-      final imagePosition = _screenToImageCoordinates(screenPosition);
-      
-      setState(() {
-        _cornerPoints[_selectedCornerIndex!] = imagePosition;
-      });
-    }
-  }
-
-  Future<void> _processImage() async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -242,258 +52,326 @@ class _GridAdjustmentScreenState extends State<GridAdjustmentScreen> {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Traitement de l\'image...'),
+            Text('Détection de la grille...'),
           ],
         ),
       ),
     );
 
-    try {
-      final cellImages = await _extractCellImages();
-      
+      final (debugSteps, cellImages) = await _extractCellImages(imageFile.path);
       Navigator.pop(context);
-      
+
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ExtractedCellsPreview(
-            cellImages: cellImages,
-            boardState: widget.boardState,
+          builder: (context) => DebugStepsScreen(
+            debugSteps: debugSteps,
+            onComplete: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ExtractedCellsPreview(
+                  cellImages: cellImages,
+                  boardState: boardState,
+                ),
+              ),
+            ),
           ),
         ),
       );
-    } catch (e) {
-      Navigator.pop(context);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors du traitement de l\'image: $e'),
-          backgroundColor: Colors.red,
-        ),
+  }
+
+  Future<(List<(cv.Mat, String)>, List<File>)> _extractCellImages(String imagePath) async {
+    final img = cv.imread(imagePath);
+    if (img.isEmpty) throw Exception('Impossible de charger l\'image');
+
+    final List<(cv.Mat, String)> debugSteps = [];
+    List<File> cellImages = [];
+
+    try {
+      // Étape 1 : Conversion en gris
+      final gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY);
+      debugSteps.add((gray.clone(), 'Étape 1 : Conversion en gris'));
+
+      // Étape 2 : Flou gaussien
+      final blurred = cv.gaussianBlur(gray, (5, 5), 0);
+      debugSteps.add((blurred.clone(), 'Étape 2 : Flou gaussien'));
+
+      // Étape 3 : Seuil adaptatif pour une meilleure détection des contours
+      final thresh = cv.adaptiveThreshold(
+        blurred, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2
       );
-    }
-  }
+      debugSteps.add((thresh.clone(), 'Étape 3 : Seuil adaptatif'));
 
-  Future<List<File>> _extractCellImages() async {
-    final data = await widget.imageFile.readAsBytes();
-    final image = img.decodeImage(data);
-    if (image == null) throw Exception('Impossible de décoder l\'image');
-    
-    final List<File> cellImages = [];
-    final tempDir = await getTemporaryDirectory();
-    
-    // S'assurer que les coins sont dans le bon ordre
-    _sortCornerPoints();
-    
-    final targetWidth = 15 * 50; // 15 cellules de 50 pixels
-    final targetHeight = 15 * 50;
-    
-    // Simplification - ici nous devrions idéalement utiliser une transformation perspective
-    final scaledImage = img.copyResize(
-      image,
-      width: targetWidth,
-      height: targetHeight,
-    );
-    
-    final cellWidth = targetWidth ~/ 15;
-    final cellHeight = targetHeight ~/ 15;
-    
-    for (int y = 0; y < 15; y++) {
-      for (int x = 0; x < 15; x++) {
-        final cellImage = img.copyCrop(
-          scaledImage,
-          x: x * cellWidth,
-          y: y * cellHeight,
-          width: cellWidth,
-          height: cellHeight,
-        );
-        
-        final cellFile = File('${tempDir.path}/cell_${y}_$x.png');
-        await cellFile.writeAsBytes(img.encodePng(cellImage));
-        cellImages.add(cellFile);
+      // Étape 4 : Détection d'arêtes Canny
+      final edges = cv.canny(thresh, 50, 150);
+      debugSteps.add((edges.clone(), 'Étape 4 : Détection d\'arêtes Canny'));
+
+      // Étape 5 : Détection du contour extérieur du plateau
+      var contours = cv.findContours(edges, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE).$1;
+      final outerBoardContour = contours.reduce((a, b) => cv.contourArea(a) > cv.contourArea(b) ? a : b);
+
+      final boardContourImg = img.clone();
+      cv.drawContours(boardContourImg, cv.VecVecPoint.fromVecPoint(outerBoardContour), -1, cv.Scalar(0, 255, 0, 0), thickness: 3);
+      debugSteps.add((boardContourImg.clone(), 'Étape 5 : Contour du plateau détecté'));
+
+      // Étape 6 : Redresser le plateau
+      final boardCorners = _getCorners(outerBoardContour);
+
+      final cornersDebugImg = img.clone();
+      for (int i = 0; i < boardCorners.length; i++) {
+        cv.circle(cornersDebugImg, boardCorners[i], 10, cv.Scalar(0, 255, 0, 0), thickness: -1);
       }
-    }
-    
-    return cellImages;
-  }
+      debugSteps.add((cornersDebugImg.clone(), 'DEBUG : Coins détectés du plateau'));
+      
+      final warpedBoard = _warpBoard(img, boardCorners);
+      debugSteps.add((warpedBoard.clone(), 'Étape 8 : Plateau redressé'));
+   final warpedGray = cv.cvtColor(warpedBoard, cv.COLOR_BGR2GRAY);
+   final size = 800; // Taille fixe du plateau redressé
 
-  void _sortCornerPoints() {
-    // Calculer le centre des points
-    final center = _cornerPoints.fold<Offset>(
-      Offset.zero,
-      (sum, point) => sum + point,
-    ) / 4;
-    
-    // Trier les points selon leur angle par rapport au centre
-    _cornerPoints.sort((a, b) {
-      final angleA = (a - center).direction;
-      final angleB = (b - center).direction;
-      return angleA.compareTo(angleB);
-    });
-    
-    // Réarranger pour que le premier point soit en haut à gauche (min x, min y)
-    final minYPoint = _cornerPoints.reduce(
-      (current, next) => current.dy < next.dy ? current : next,
-    );
-    
-    final index = _cornerPoints.indexOf(minYPoint);
-    if (index > 0) {
-      final newPoints = _cornerPoints.sublist(index)
-        ..addAll(_cornerPoints.sublist(0, index));
-      _cornerPoints = newPoints;
+
+debugSteps.add((warpedGray.clone(), 'Étape 9 : Plateau en gris'));
+
+final warpedBlurred = cv.gaussianBlur(warpedGray, (3, 3), 0); // Flou léger pour cases fines
+debugSteps.add((warpedBlurred.clone(), 'Étape 10 : Flou sur plateau'));
+
+final warpedThresh = cv.adaptiveThreshold(
+  warpedBlurred, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 7, 3 // Plus fin pour petites cases
+);
+debugSteps.add((warpedThresh.clone(), 'Étape 11 : Seuil adaptatif inversé'));
+
+final kernel = cv.getStructuringElement(cv.MORPH_RECT, (2, 2));
+final morphed = cv.morphologyEx(warpedThresh, cv.MORPH_OPEN, kernel); // Nettoie bruit, préserve rectangles
+debugSteps.add((morphed.clone(), 'Étape 12 : Morphologie pour contours de cases'));
+
+
+contours = cv.findContours(morphed, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE).$1; // RETR_LIST pour tous
+if (contours.isEmpty) throw Exception('Aucun contour de case détecté');
+
+final approxCellSize = size / 15; // Taille estimée d'une case (~53 pour size=800)
+final minCellArea = (approxCellSize * 0.7) * (approxCellSize * 0.7); // Tolérance
+final maxCellArea = (approxCellSize * 1.3) * (approxCellSize * 1.3);
+
+List<cv.Rect> cellRects = [];
+for (final contour in contours) {
+  final approx = cv.approxPolyDP(contour, cv.arcLength(contour, true) * 0.03, true);
+  if (approx.length == 4) { // Rectangle approximé
+    final area = cv.contourArea(contour);
+    if (area >= minCellArea && area <= maxCellArea) {
+      cellRects.add(cv.boundingRect(contour));
     }
   }
 }
 
-class GridPainter extends CustomPainter {
-  final ui.Image image;
-  final List<Offset> cornerPoints;
-  final int? selectedCornerIndex;
-  
-  GridPainter({
-    required this.image,
-    required this.cornerPoints,
-    this.selectedCornerIndex,
+// Debug : Dessiner les cases détectées
+final cellsDebug = warpedBoard.clone();
+for (final rect in cellRects) {
+  cv.rectangle(cellsDebug, rect, cv.Scalar(0, 255, 0, 0), thickness: 2);
+}
+debugSteps.add((cellsDebug.clone(), 'Étape 13 : Cases vides détectées'));
+
+if (cellRects.isEmpty) throw Exception('Aucune case valide pour extrapoler la grille');
+
+int minX = cellRects.map((r) => r.x).reduce(min);
+int maxX = cellRects.map((r) => r.x + r.width).reduce(max);
+int minY = cellRects.map((r) => r.y).reduce(min);
+int maxY = cellRects.map((r) => r.y + r.height).reduce(max);
+
+final gridRect = cv.Rect(minX, minY, maxX - minX, maxY - minY);
+
+// Vérifie aspect ratio ~1 (carré)
+if ((gridRect.width / gridRect.height).abs() - 1 > 0.05) throw Exception('Grille extrapolée non carrée');
+
+// Taille de cellule moyenne (plus précise maintenant)
+final cellSizeW = gridRect.width / 15;
+final cellSizeH = gridRect.height / 15;
+
+// Debug : Bordures extrapolées
+final bordersDebug = warpedBoard.clone();
+cv.rectangle(bordersDebug, gridRect, cv.Scalar(255, 0, 0, 0), thickness: 3);
+debugSteps.add((bordersDebug.clone(), 'Étape 14 : Bordures de grille extrapolées'));
+
+
+
+cellImages = [];
+for (int row = 0; row < 15; row++) {
+  for (int col = 0; col < 15; col++) {
+    final left = (gridRect.x + col * cellSizeW).round();
+    final top = (gridRect.y + row * cellSizeH).round();
+    final width = cellSizeW.round();
+    final height = cellSizeH.round();
+    
+    final cellRectLocal = cv.Rect(left, top, width, height);
+    final cellMat = warpedBoard.clone().region(cellRectLocal);
+    
+    final tempPath = '${Directory.systemTemp.path}/cell_${row}_$col.png';
+    cv.imwrite(tempPath, cellMat);
+    cellImages.add(File(tempPath));
+    
+    cellMat.release();
+  }
+}
+      
+      // Libération des ressources
+      _releaseResources([img, gray, blurred, thresh, edges, warpedBoard, cornersDebugImg, boardContourImg]);
+
+
+      return (debugSteps, cellImages);
+    } catch (e) {
+      img.release();
+      rethrow;
+    }
+  }
+
+  List<cv.Point> _getCorners(cv.VecPoint contour) {
+    final points = contour.toList();
+    
+    
+    // Trouver les 4 points les plus éloignés du centre
+    final centerX = points.map((p) => p.x).reduce((a, b) => a + b) / points.length;
+    final centerY = points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
+    final center = cv.Point(centerX.round(), centerY.round());
+        
+    // Trouver le point dans chaque quadrant
+    cv.Point? topLeft, topRight, bottomRight, bottomLeft;
+    double maxDistTL = 0, maxDistTR = 0, maxDistBR = 0, maxDistBL = 0;
+    
+    for (final point in points) {
+      final dx = point.x - center.x;
+      final dy = point.y - center.y;
+      final dist = sqrt(dx*dx + dy*dy);
+      
+      if (dx <= 0 && dy <= 0) { // Top-left quadrant
+        if (dist > maxDistTL) {
+          maxDistTL = dist;
+          topLeft = point;
+        }
+      } else if (dx >= 0 && dy <= 0) { // Top-right quadrant
+        if (dist > maxDistTR) {
+          maxDistTR = dist;
+          topRight = point;
+        }
+      } else if (dx >= 0 && dy >= 0) { // Bottom-right quadrant
+        if (dist > maxDistBR) {
+          maxDistBR = dist;
+          bottomRight = point;
+        }
+      } else if (dx <= 0 && dy >= 0) { // Bottom-left quadrant
+        if (dist > maxDistBL) {
+          maxDistBL = dist;
+          bottomLeft = point;
+        }
+      }
+    }
+    
+    if (topLeft == null || topRight == null || bottomRight == null || bottomLeft == null) {
+      throw Exception('Impossible de trouver les 4 coins du contour');
+    }
+    
+    return [topLeft, topRight, bottomRight, bottomLeft];
+  }
+
+  /// Redresse le plateau en utilisant une transformation perspective
+  cv.Mat _warpBoard(cv.Mat img, List<cv.Point> corners) {
+    
+    final srcPoints = cv.VecPoint.fromList(corners);
+    final size = 800; // Taille du plateau redressé
+    final dstPoints = cv.VecPoint.fromList([
+      cv.Point(0, 0),        // top-left
+      cv.Point(size, 0),     // top-right
+      cv.Point(size, size),  // bottom-right
+      cv.Point(0, size),     // bottom-left
+    ]);
+    
+    try {
+      final transform = cv.getPerspectiveTransform(srcPoints, dstPoints);
+      final warped = cv.warpPerspective(img, transform, (size, size));
+      
+      if (warped.isEmpty) {
+        throw Exception('La transformation perspective a échoué - image vide');
+      }
+      
+      return warped;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+
+  void _releaseResources(List<cv.Mat> mats) {
+    for (final mat in mats) {
+      if (!mat.isEmpty) mat.release();
+    }
+  }
+}
+
+// Classes d'interface utilisateur inchangées
+class DebugStepsScreen extends StatelessWidget {
+  final List<(cv.Mat, String)> debugSteps;
+  final VoidCallback onComplete;
+
+  const DebugStepsScreen({
+    super.key,
+    required this.debugSteps,
+    required this.onComplete,
   });
-  
+
   @override
-  void paint(Canvas canvas, Size size) {
-    // Calculer les facteurs d'échelle pour adapter l'image à l'écran
-    final double scaleX = size.width / image.width;
-    final double scaleY = size.height / image.height;
-    final double scale = scaleX < scaleY ? scaleX : scaleY;
-    
-    final double scaledWidth = image.width * scale;
-    final double scaledHeight = image.height * scale;
-    
-    // Centrer l'image
-    final double dx = (size.width - scaledWidth) / 2;
-    final double dy = (size.height - scaledHeight) / 2;
-    
-    // Dessiner l'image
-    final paint = Paint();
-    canvas.save();
-    canvas.translate(dx, dy);
-    canvas.scale(scale);
-    canvas.drawImage(image, Offset.zero, paint);
-    canvas.restore();
-    
-    // Transformer les coins en fonction de l'échelle et du déplacement
-    final transformedCorners = cornerPoints.map((point) {
-      return Offset(
-        point.dx * scale + dx,
-        point.dy * scale + dy,
-      );
-    }).toList();
-    
-    // Dessiner le quadrilatère
-    final path = Path()
-      ..moveTo(transformedCorners[0].dx, transformedCorners[0].dy)
-      ..lineTo(transformedCorners[1].dx, transformedCorners[1].dy)
-      ..lineTo(transformedCorners[2].dx, transformedCorners[2].dy)
-      ..lineTo(transformedCorners[3].dx, transformedCorners[3].dy)
-      ..close();
-    
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = Colors.white.withOpacity(0.3)
-        ..style = PaintingStyle.fill,
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Étapes de détection'),
+        backgroundColor: Colors.brown[300],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            onPressed: onComplete,
+            tooltip: 'Passer aux cellules extraites',
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(8.0),
+        itemCount: debugSteps.length,
+        itemBuilder: (context, index) {
+  final (mat, description) = debugSteps[index];
+  final (_, encoded) = cv.imencode('.png', mat);
+  return Card(
+    key: ValueKey(index), // Ajout de la clé unique ici
+    margin: const EdgeInsets.symmetric(vertical: 8.0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Image.memory(
+          encoded,
+          fit: BoxFit.cover,
+          width: double.infinity,
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Text(
+            description,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    ),
+  );
+},
+      ),
     );
-    
-    // Dessiner les lignes de la grille avec un meilleur contraste
-    final linePaint = Paint()
-      ..color = Colors.white.withOpacity(0.7)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    
-    // Effet d'ombre pour améliorer la visibilité
-    final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.5)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    
-    // Lignes horizontales
-    for (int i = 0; i <= 15; i++) {
-      final t = i / 15;
-      final p1 = _interpolate(transformedCorners[0], transformedCorners[3], t);
-      final p2 = _interpolate(transformedCorners[1], transformedCorners[2], t);
-      
-      // Dessiner l'ombre d'abord
-      canvas.drawLine(p1, p2, shadowPaint);
-      // Puis la ligne blanche
-      canvas.drawLine(p1, p2, linePaint);
-    }
-    
-    // Lignes verticales
-    for (int i = 0; i <= 15; i++) {
-      final t = i / 15;
-      final p1 = _interpolate(transformedCorners[0], transformedCorners[1], t);
-      final p2 = _interpolate(transformedCorners[3], transformedCorners[2], t);
-      
-      // Dessiner l'ombre d'abord
-      canvas.drawLine(p1, p2, shadowPaint);
-      // Puis la ligne blanche
-      canvas.drawLine(p1, p2, linePaint);
-    }
-    
-    // Dessiner les points de contrôle
-    for (int i = 0; i < transformedCorners.length; i++) {
-      final point = transformedCorners[i];
-      final isSelected = i == selectedCornerIndex;
-      
-      // Ajouter une ombre pour les points
-      canvas.drawCircle(
-        point,
-        isSelected ? 24.0 : 18.0,
-        Paint()
-          ..color = Colors.black.withOpacity(0.5),
-      );
-      
-      // Point principal
-      canvas.drawCircle(
-        point,
-        isSelected ? 20.0 : 14.0,
-        Paint()
-          ..color = isSelected
-              ? Colors.red.withOpacity(0.8)
-              : Colors.blue.withOpacity(0.8),
-      );
-      
-      // Point central blanc
-      canvas.drawCircle(
-        point,
-        isSelected ? 8.0 : 6.0,
-        Paint()..color = Colors.white,
-      );
-    }
-  }
-  
-  Offset _interpolate(Offset p1, Offset p2, double t) {
-    return Offset(
-      p1.dx + (p2.dx - p1.dx) * t,
-      p1.dy + (p2.dy - p1.dy) * t,
-    );
-  }
-  
-  @override
-  bool shouldRepaint(covariant GridPainter oldDelegate) {
-    return oldDelegate.image != image ||
-           oldDelegate.cornerPoints != cornerPoints ||
-           oldDelegate.selectedCornerIndex != selectedCornerIndex;
   }
 }
 
 class ExtractedCellsPreview extends StatelessWidget {
   final List<File> cellImages;
   final BoardState boardState;
-  
+
   const ExtractedCellsPreview({
     super.key,
     required this.cellImages,
     required this.boardState,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -512,12 +390,12 @@ class ExtractedCellsPreview extends StatelessWidget {
                 crossAxisSpacing: 2.0,
                 mainAxisSpacing: 2.0,
               ),
-              itemCount: 225, // 15x15
+              itemCount: 225,
               itemBuilder: (context, index) {
                 final row = index ~/ 15;
                 final col = index % 15;
                 final imageIndex = row * 15 + col;
-                
+
                 if (imageIndex < cellImages.length) {
                   return Container(
                     decoration: BoxDecoration(
@@ -556,10 +434,10 @@ class ExtractedCellsPreview extends StatelessWidget {
                   ),
                   onPressed: () {
                     Navigator.popUntil(
-                      context, 
+                      context,
                       (route) => route.isFirst,
                     );
-                    
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Reconnaissance OCR à implémenter dans une prochaine version.'),

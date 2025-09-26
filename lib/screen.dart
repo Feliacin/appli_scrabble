@@ -102,7 +102,7 @@ class _ScreenState extends State<Screen> with WidgetsBindingObserver {
             // Dernier mot joué
             if (session.lastPlayedWord != null)
               Text(
-                '${session.players[session.playerTurn].name} ${session.lastPlayedWord!.word.toUpperCase()} (${session.lastPlayedWord!.points} points)',
+                '${session.players[1 - session.playerTurn].name} ${session.lastPlayedWord!.word.toUpperCase()} (${session.lastPlayedWord!.points} points)',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
