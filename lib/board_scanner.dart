@@ -1,641 +1,831 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:appli_scrabble/board.dart';
+import 'package:appli_scrabble/main.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:archive/archive.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 
 import 'useful_classes.dart';
+import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
+
+// =============================================================================
+// 1. CONTROLLEUR PRINCIPAL
+// =============================================================================
 
 class BoardScanner {
   final ImagePicker _picker = ImagePicker();
-  int _size = 800; // Taille du plateau redressé (modifiable si besoin)
+  final OcrService _ocrService = OcrService();
 
+  /// Lance le processus complet
   Future<void> scanBoard(BuildContext context, BoardState boardState) async {
-    final source = await showDialog<ImageSource>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('Prendre une photo'),
-                onTap: () => Navigator.pop(context, ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Choisir dans la galerie'),
-                onTap: () => Navigator.pop(context, ImageSource.gallery),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
+    final appState = Provider.of<AppState>(context, listen: false);
+    
+    // 1. Choix de l'image
+    final source = await _showSourceDialog(context);
     if (source == null) return;
 
     final XFile? pickedFile = await _picker.pickImage(
       source: source,
-      maxWidth: 1200,
-      maxHeight: 1200,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    );
+    if (pickedFile == null) return;
+
+    // 2. Affichage du Loader (Indispensable car le traitement est lourd)
+    // On utilise un dialog bloquant pour éviter les interactions pendant le calcul
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => const _ProcessingDialog(),
     );
 
-    if (pickedFile == null) return;
-    final File imageFile = File(pickedFile.path);
+    try {
+      // 3. Traitement OpenCV (Découpage des cases)
+      final result = await BoardImageProcessor.process(pickedFile.path);
 
+      if (!context.mounted) return;
 
+      // 4. BRANCHEMENT SELON LE MODE (DEBUG vs NORMAL)
+      if (appState.debugMode) {
+        // --- MODE DÉVELOPPEUR ---
+        // On ferme le loader et on ouvre l'écran de visualisation des étapes
+        Navigator.pop(context); 
+        _navigateToDebugFlow(context, result, boardState);
+      
+      } else {
+        // --- MODE NORMAL (SILENCIEUX) ---
+        // On reste dans le loader, mais on lance l'OCR en fond
+        
+        // a. Reconnaissance OCR de toutes les cases
+        final letters = await _ocrService.recognizeBatch(result.cellImages);
+        
+        // b. Mise à jour du plateau
+        _applyLettersToBoardState(boardState, letters);
+        
+        // c. Fin : On ferme le loader et on notifie
+        if (context.mounted) {
+          Navigator.pop(context); // Ferme le loader
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Scan terminé : ${letters.where((l) => l.isNotEmpty).length} lettres trouvées"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
 
-      final (debugSteps, cellImages) = await _extractCellImages(imageFile.path);
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Ferme le loader en cas d'erreur
+        _showError(context, e.toString());
+      }
+    }
+  }
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DebugStepsScreen(
-            debugSteps: debugSteps,
-            onComplete: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ExtractedCellsPreview(
-                  cellImages: cellImages,
-                  boardState: boardState,
-                ),
+  // --- Helpers privés pour le BoardScanner ---
+
+  Future<ImageSource?> _showSourceDialog(BuildContext context) {
+    return showDialog<ImageSource>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Source de l\'image'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Prendre une photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choisir dans la galerie'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToDebugFlow(BuildContext context, ScanResult result, BoardState boardState) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DebugStepsScreen(
+          debugSteps: result.debugSteps,
+          onComplete: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ExtractedCellsPreview(
+                cellImages: result.cellImages,
+                boardState: boardState,
               ),
             ),
           ),
         ),
-      );
-
-      
+      ),
+    );
   }
 
-  Future<(List<(cv.Mat, String)>, List<File>)> _extractCellImages(String imagePath) async {
-    final img = cv.imread(imagePath);
+  void _applyLettersToBoardState(BoardState boardState, List<String> letters) {
+    // Réinitialisation propre avant remplissage
+    // Note: Adaptez selon votre implémentation exacte de clearBoard() si elle existe
+    boardState.letters = List.generate(15, (_) => List.filled(15, null));
+    boardState.blanks = []; 
+    // boardState.tempLetters = []; // Si nécessaire
 
-    if (img.isEmpty) throw Exception('Impossible de charger l\'image');
-
-    final List<(cv.Mat, String)> debugSteps = [];
-    List<File> cellImages = [];
-
-    try {
-      // // Étape 1 : Conversion en gris
-      // final gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY);
-      // debugSteps.add((gray.clone(), 'Étape 1 : Conversion en gris'));
-
-      // // Étape 2 : Flou gaussien
-      // final blurred = cv.gaussianBlur(gray, (5, 5), 0);
-      // debugSteps.add((blurred.clone(), 'Étape 2 : Flou gaussien'));
-
-      // // Étape 3 : Seuil adaptatif pour une meilleure détection des contours
-      // final thresh = cv.adaptiveThreshold(
-      //   blurred, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2
-      // );
-      // debugSteps.add((thresh.clone(), 'Étape 3 : Seuil adaptatif'));
-
-      // // Étape 4 : Détection d'arêtes Canny
-      // final edges = cv.canny(thresh, 50, 150);
-      // debugSteps.add((edges.clone(), 'Étape 4 : Détection d\'arêtes Canny'));
-
-      // // Étape 5 : Détection du contour extérieur du plateau
-      // var contours = cv.findContours(edges, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE).$1;
-      // final outerBoardContour = contours.reduce((a, b) => cv.contourArea(a) > cv.contourArea(b) ? a : b);
-
-      // final boardContourImg = img.clone();
-      // cv.drawContours(boardContourImg, cv.VecVecPoint.fromVecPoint(outerBoardContour), -1, cv.Scalar(0, 255, 0, 0), thickness: 3);
-      // debugSteps.add((boardContourImg.clone(), 'Étape 5 : Contour du plateau détecté'));
-
-      // // Étape 6 : Redresser le plateau
-      // final boardCorners = _getCorners(outerBoardContour);
-
-      // final cornersDebugImg = img.clone();
-      // for (int i = 0; i < boardCorners.length; i++) {
-      //   cv.circle(cornersDebugImg, boardCorners[i], 10, cv.Scalar(0, 255, 0, 0), thickness: -1);
-      // }
-      // debugSteps.add((cornersDebugImg.clone(), 'DEBUG : Coins détectés du plateau'));
+    for (int i = 0; i < letters.length; i++) {
+      if (i >= 225) break;
       
-      // final warpedBoard = _warpBoard(img, boardCorners);
-      // debugSteps.add((warpedBoard.clone(), 'Étape 8 : Plateau redressé'));
-      
-      // final warpedGray = cv.cvtColor(warpedBoard, cv.COLOR_BGR2GRAY);
+      final letter = letters[i].toUpperCase();
+      // On ignore les cases vides ou incertaines '?'
+      if (letter.isNotEmpty && letter != '?') {
+        final row = i ~/ 15;
+        final col = i % 15;
+        boardState.writeLetter(letter.toLowerCase(), Position(row, col));
+      }
+    }
+    boardState.updatePossibleLetters();
+    // Le notifyListeners() est généralement appelé dans writeLetter ou updatePossibleLetters
+  }
 
-      // // Flou léger pour cases fines
-      // final warpedBlurred = cv.gaussianBlur(warpedGray, (3, 3), 0); 
-
-      // final warpedThresh = cv.adaptiveThreshold(
-      //   warpedBlurred, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 7, 3 // Plus fin pour petites cases
-      // );
-
-      // final kernel = cv.getStructuringElement(cv.MORPH_RECT, (2, 2));
-      // final morphed = cv.morphologyEx(warpedThresh, cv.MORPH_OPEN, kernel); // Nettoie bruit, préserve rectangles
-      // debugSteps.add((morphed.clone(), 'Étape 9 : Morphologie pour contours de cases'));
-
-
-      // contours = cv.findContours(morphed, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE).$1; // RETR_LIST pour tous
-      // if (contours.isEmpty) throw Exception('Aucun contour de case détecté');
-
-      // // final size = max(img.cols, img.rows); // Taille fixe du plateau redressé
-      // final approxCellSize = _size / 15; // Taille estimée d'une case (~53 pour size=800)
-
-      // final minCellArea = (approxCellSize * 0.7) * (approxCellSize * 0.7); // Tolérance
-      // final maxCellArea = approxCellSize * approxCellSize;
-
-      // List<cv.Rect> cellRects = [];
-      // for (final contour in contours) {
-      //   final approx = cv.approxPolyDP(contour, cv.arcLength(contour, true) * 0.03, true);
-      //   if (approx.length == 4) { // Rectangle approximé
-      //     final area = cv.contourArea(contour);
-      //     if (area >= minCellArea && area <= maxCellArea) {
-      //       cellRects.add(cv.boundingRect(contour));
-      //     }
-      //   }
-      // }
-
-      // // Debug : Dessiner les cases détectées
-      // final cellsDebug = warpedBoard.clone();
-      // for (final rect in cellRects) {
-      //   cv.rectangle(cellsDebug, rect, cv.Scalar(0, 255, 0, 0), thickness: 2);
-      // }
-      // debugSteps.add((cellsDebug.clone(), 'Étape 10 : Cases vides détectées'));
-
-      // if (cellRects.isEmpty) throw Exception('Aucune case valide pour extrapoler la grille');
-
-      // int minX = cellRects.map((r) => r.x).reduce(min);
-      // int maxX = cellRects.map((r) => r.x + r.width).reduce(max);
-      // int minY = cellRects.map((r) => r.y).reduce(min);
-      // int maxY = cellRects.map((r) => r.y + r.height).reduce(max);
-
-      // final gridRect = cv.Rect(minX, minY, maxX - minX, maxY - minY);
-
-      // // Vérifie aspect ratio ~1 (carré)
-      // // if ((gridRect.width / gridRect.height).abs() - 1 > 0.05) throw Exception('Grille extrapolée non carrée');
-
-      // // Taille de cellule moyenne (plus précise maintenant)
-      // final cellSizeW = gridRect.width / 15;
-      // final cellSizeH = gridRect.height / 15;
-
-      // // Debug : Bordures extrapolées
-      // final bordersDebug = warpedBoard.clone();
-      // cv.rectangle(bordersDebug, gridRect, cv.Scalar(255, 0, 0, 0), thickness: 3);
-      // debugSteps.add((bordersDebug.clone(), 'Étape 11 : Bordures de grille extrapolées'));
-    // Étapes de préparation (identiques)
-    final gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY);
-    debugSteps.add((gray.clone(), 'Étape 1 : Conversion en gris'));
-    
-    final blurred = cv.gaussianBlur(gray, (5, 5), 0);
-    debugSteps.add((blurred.clone(), 'Étape 2 : Flou gaussien'));
-    
-    final thresh = cv.adaptiveThreshold(
-      blurred, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 8
+  void _showError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Erreur : $message"), backgroundColor: Colors.red),
     );
-    debugSteps.add((thresh.clone(), 'Étape 3 : Seuil adaptatif'));
+  }
+}
 
- final kernel2 = cv.getStructuringElement(cv.MORPH_RECT, (3, 3)); // Noyau 3x3
-    final eroded = cv.erode(thresh, kernel2, iterations: 1); 
-    debugSteps.add((eroded.clone(), 'Étape 3c : Erosion pour réduire le bruit'));
-final dilated = cv.dilate(eroded, kernel2, iterations: 1);
-    debugSteps.add((dilated.clone(), 'Étape 3d : Dilatation pour restaurer les formes'));
-    
-    // Nouvelle étape : Opérations morphologiques pour nettoyer et régulariser
-    final kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3));
-    final morphed = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel);
-    debugSteps.add((morphed.clone(), 'Étape 3b : Nettoyage morphologique'));
+// =============================================================================
+// 2. SERVICES 
+// =============================================================================
 
-       
-    
-    // NOUVELLE APPROCHE : Détecter les coins à partir des cases
-    final cellDetectionDebug = img.clone();
-    final boardCorners = _getBoardCornersFromCells(morphed, cellDetectionDebug, debugSteps);
-    debugSteps.add((cellDetectionDebug.clone(), 'Étape 4 : Détection des coins via les cases'));
-    
-    // Redressement et extraction des cellules (identique au code existant)
-    final warpedBoard = _warpBoard(img, boardCorners);
-    debugSteps.add((warpedBoard.clone(), 'Étape 5 : Plateau redressé'));
-    
+class ScanResult {
+  final List<(cv.Mat, String)> debugSteps;
+  final List<File> cellImages;
+  ScanResult({required this.debugSteps, required this.cellImages});
+}
 
-      cellImages = [];
-      // final margin = 0.08 * cellSizeW; // Marge pour éviter bordures
-      // for (int row = 0; row < 15; row++) {
-      //   for (int col = 0; col < 15; col++) {
-          
-      //     final left = (gridRect.x + col * cellSizeW - margin).round();
-      //     final top = (gridRect.y + row * cellSizeH - margin).round();
-      //     final width = (cellSizeW + 2 * margin).round();
-      //     final height = (cellSizeH + 2 * margin).round();
-          
-      //     final cellRectLocal = cv.Rect(left, top, width, height);
-      //     final cellMat = warpedBoard.clone().region(cellRectLocal);
-          
-      //     final tempPath = '${Directory.systemTemp.path}/cell_${row}_$col.png';
-      //     cv.imwrite(tempPath, cellMat);
-      //     cellImages.add(File(tempPath));
-          
-      //     cellMat.release();
-          
-      //   }
-      // }
-      
-      // Libération des ressources
-      // _releaseResources([img, gray, blurred, thresh, edges, warpedBoard, cornersDebugImg, boardContourImg]);
+class OcrService {
+  /// Reconnaît une seule image
+  Future<String> predict(File imageFile) async {
+    try {
+      final img = cv.imread(imageFile.path, flags: cv.IMREAD_GRAYSCALE);
+      if (img.isEmpty) return ""; // Image invalide
 
+      final letter = _fastClassify(img);
+      if (letter != null) return letter;
 
-      return (debugSteps, cellImages);
+      String text = await FlutterTesseractOcr.extractText(
+        imageFile.path, 
+        language: 'eng',
+        args: {
+          "psm": "10", // Single character mode
+          "tessedit_char_whitelist": "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        }
+      );
+      if (text.length > 1) text = ""; // Confusion
+      return text;
     } catch (e) {
-      img.release();
-      rethrow;
+      return "";
     }
   }
 
-  List<cv.Point> _getCorners(cv.VecPoint contour) {
-    final points = contour.toList();
-    
-    
-    // Trouver les 4 points les plus éloignés du centre
-    final centerX = points.map((p) => p.x).reduce((a, b) => a + b) / points.length;
-    final centerY = points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
-    final center = cv.Point(centerX.round(), centerY.round());
-        
-    // Trouver le point dans chaque quadrant
-    cv.Point? topLeft, topRight, bottomRight, bottomLeft;
-    double maxDistTL = 0, maxDistTR = 0, maxDistBR = 0, maxDistBL = 0;
-    
-    for (final point in points) {
-      final dx = point.x - center.x;
-      final dy = point.y - center.y;
-      final dist = sqrt(dx*dx + dy*dy);
+  String? _fastClassify(cv.Mat img) {
+    try {
+      final inverted = cv.bitwiseNOT(img); // Inversion pour contours
+
+      // 1. Case blanche -> vide
+      if (cv.countNonZero(inverted) == 0) {
+        return "";
+      }
+
+      // 2. Plus grand contour
+      final (contours, _) = cv.findContours(inverted, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      inverted.release();
+      if (contours.isEmpty) return null;
       
-      if (dx <= 0 && dy <= 0) { // Top-left quadrant
-        if (dist > maxDistTL) {
-          maxDistTL = dist;
-          topLeft = point;
+      int bestIdx = 0;
+      double bestArea = 0.0;
+      for (int i = 0; i < contours.length; i++) {
+        final area = cv.contourArea(contours[i]).toDouble();
+        if (area > bestArea) {
+          bestArea = area;
+          bestIdx = i;
         }
-      } else if (dx >= 0 && dy <= 0) { // Top-right quadrant
-        if (dist > maxDistTR) {
-          maxDistTR = dist;
-          topRight = point;
+      }
+      final rect = cv.boundingRect(contours[bestIdx]);
+
+      final minWidthRatio = 0.2; // <20% largeur pour vertical fin
+      final minHeightRatio = 0.2; // <20% hauteur pour horizontal fin
+      final barRatioThreshold = 3; // Ratio pour confirmer barre
+
+      // 3. Barre verticale -> 'I' (hauteur grande, largeur fine)
+      if (rect.width < img.cols * minWidthRatio && rect.height / rect.width > barRatioThreshold) {
+        return "I";
+      }
+
+      // 4. Barre horizontale -> vide (largeur grande, hauteur fine)
+      if (rect.height < img.rows * minHeightRatio && rect.width / rect.height > barRatioThreshold) {
+        return "";
+      }
+
+      return null;
+    } finally {
+      img.release();
+    }
+  }
+
+  /// Reconnaît une liste d'images (pour le mode silencieux)
+  Future<List<String>> recognizeBatch(List<File> images) async {
+    // Future.wait permet de paralléliser autant que possible
+    return await Future.wait(images.map((file) => predict(file)));
+  }
+}
+
+class BoardImageProcessor {
+  static const int _targetSize = 800;
+  static const int _gridSize = 15;
+
+  static Future<ScanResult> process(String imagePath) async {
+    final List<(cv.Mat, String)> steps = [];
+    final img = cv.imread(imagePath);
+    if (img.isEmpty) throw Exception('Impossible de charger l\'image');
+
+    try {
+      // 1. Prétraitements
+      final gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY);
+      steps.add((gray.clone(), '0. Grayscale')); // Clone pour affichage debug
+      
+      final blurred = cv.gaussianBlur(gray, (5, 5), 0);
+      final edges = cv.canny(blurred, 50, 150);
+      
+      final kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3));
+      final closedEdges = cv.morphologyEx(edges, cv.MORPH_CLOSE, kernel);
+      steps.add((closedEdges.clone(), '1. Contours (Canny)'));
+
+      // 2. Détection Grille
+      final debugMat = img.clone();
+      final corners = _findGridCorners(closedEdges, debugMat, steps);
+      steps.add((debugMat, '2. Coins détectés'));
+
+      // 3. Perspective Warp
+      final warped = _warpPerspective(img, corners);
+      steps.add((warped.clone(), '3. Plateau redressé'));
+
+      // 4. Découpage Cellules
+      final cells = _sliceCells(warped);
+      
+      return ScanResult(debugSteps: steps, cellImages: cells);
+    } catch (e) {
+      // On relance l'erreur pour que le controller gère l'UI
+      rethrow; 
+    }
+  }
+
+  // --- Méthodes privées de Logique Mathématique (Static) ---
+
+  static List<File> _sliceCells(cv.Mat board) {
+    final List<File> files = [];
+    final double step = _targetSize / _gridSize;
+    final tempDir = Directory.systemTemp.path;
+
+    for (int row = 0; row < _gridSize; row++) {
+      for (int col = 0; col < _gridSize; col++) {
+        final rect = cv.Rect(
+          (col * step).round(),
+          (row * step).round(),
+          step.round(),
+          step.round(),
+        );
+        
+        // Vérification des bornes
+        if (rect.x + rect.width > board.cols || rect.y + rect.height > board.rows) {
+          // Création d'une image blanche si hors bornes (rare si warp ok)
+          files.add(File('$tempDir/empty_${row}_$col.png')..writeAsBytesSync([0])); // Fallback
+          continue;
         }
-      } else if (dx >= 0 && dy >= 0) { // Bottom-right quadrant
-        if (dist > maxDistBR) {
-          maxDistBR = dist;
-          bottomRight = point;
-        }
-      } else if (dx <= 0 && dy >= 0) { // Bottom-left quadrant
-        if (dist > maxDistBL) {
-          maxDistBL = dist;
-          bottomLeft = point;
+
+        final cellMat = board.region(rect);
+        final cleanCell = _cleanCellForOcr(cellMat); // Ancien _preprocessCell
+        
+        final path = '$tempDir/cell_${row}_$col.png';
+        cv.imwrite(path, cleanCell);
+        files.add(File(path));
+        
+        cellMat.release();
+        cleanCell.release();
+      }
+    }
+    return files;
+  }
+
+  static cv.Mat _cleanCellForOcr(cv.Mat cell) {
+    final gray = cv.cvtColor(cell, cv.COLOR_BGR2GRAY);
+    final (_, binary) = cv.threshold(gray, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+
+    // Si trop sombre -> case vide
+    if (_countNonZeroRatio(binary) > 0.5) {
+      return _createWhiteMat(binary.rows, binary.cols);
+    }
+
+    // Gestion contours pour centrer la lettre
+    final (contours, hierarchy) = cv.findContours(binary, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
+    if (contours.isEmpty) return _createWhiteMat(binary.rows, binary.cols);
+
+    // 3. Zone centrale
+    final int centX = (binary.cols * 0.25).toInt();
+    final int centY = (binary.rows * 0.25).toInt();
+    final int centW = (binary.cols * 0.50).toInt();
+    final int centH = (binary.rows * 0.50).toInt();
+    final centerRect = cv.Rect(centX, centY, centW, centH);
+
+    int bestContourIdx = -1;
+    double maxArea = 0;
+    final tempMask = cv.Mat.zeros(binary.rows, binary.cols, cv.MatType.CV_8UC1);
+
+    // 4. Sélectionne la bonne lettre (inchangé : test pixel-perfect)
+    for (int i = 0; i < contours.length; i++) {
+      if (hierarchy[i].val4 != -1) continue; // Parents seulement
+
+      final rect = cv.boundingRect(contours[i]);
+      if (!_rectHasIntersection(rect, centerRect)) continue;
+
+      tempMask.setTo(cv.Scalar.all(0));
+      cv.drawContours(tempMask, contours, i, cv.Scalar.all(255), thickness: -1);
+      
+      final centerRoi = tempMask.region(centerRect);
+      final pixelsInCenter = cv.countNonZero(centerRoi);
+      centerRoi.release(); 
+
+      if (pixelsInCenter > 0) {
+        double area = cv.contourArea(contours[i]);
+        if (area > maxArea) {
+          maxArea = area;
+          bestContourIdx = i;
         }
       }
     }
-    
-    if (topLeft == null || topRight == null || bottomRight == null || bottomLeft == null) {
-      throw Exception('Impossible de trouver les 4 coins du contour');
+    tempMask.release();
+
+    // 5. Reconstruction et affinage
+    final mask = cv.Mat.zeros(binary.rows, binary.cols, cv.MatType.CV_8UC1);
+
+    if (bestContourIdx != -1) {
+      cv.drawContours(mask, contours, bestContourIdx, cv.Scalar.all(255), thickness: -1);
+      int childIdx = hierarchy[bestContourIdx].val3;
+      while (childIdx != -1) {
+        cv.drawContours(mask, contours, childIdx, cv.Scalar.all(0), thickness: -1);
+        childIdx = hierarchy[childIdx].val1;
+      }
+
+      final kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3));
+      final closed = cv.morphologyEx(mask, cv.MORPH_CLOSE, kernel);
+      mask.release();
+
+      final smallKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2, 2));
+      final eroded = cv.erode(closed, smallKernel, iterations: 1);
+      closed.release();
+
+      // Si presque vide après érosion -> case vide
+      if (_countNonZeroRatio(eroded) < 0.03) {
+        return _createWhiteMat(binary.rows, binary.cols);
+      }
+
+      return cv.bitwiseNOT(eroded); 
+    } else {
+      return _createWhiteMat(binary.rows, binary.cols);
     }
+  }
+
+  static List<cv.Point> _findGridCorners(cv.Mat edges, cv.Mat debugViz, List<(cv.Mat, String)> steps) {
+    final contours = cv.findContours(edges, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE).$1;
+    final List<cv.Rect> validCells = [];
+    final imageArea = edges.cols * edges.rows;
     
+    final minArea = imageArea / 1200;
+    final maxArea = imageArea / 225;
+
+    // Détection des cases
+    for (final contour in contours) {
+      final area = cv.contourArea(contour);
+      if (area < minArea || area > maxArea) continue;
+
+      // Calcul de l'enveloppe convexe
+      final hull = cv.VecPoint.fromMat(cv.convexHull(contour));
+      final peri = cv.arcLength( hull, true);
+      final approx = cv.approxPolyDP(hull, 0.04 * peri, true);
+
+      // On vérifie si la forme simplifiée est un quadrilatère convexe
+      if (approx.length == 4 && cv.isContourConvex(approx)) {
+        final rect = cv.boundingRect(approx);
+        final ratio = rect.width / rect.height;
+        
+        if (ratio >= 0.75 && ratio <= 1.2) { // Un Scrabble a des cases carrées
+          validCells.add(rect);
+          cv.drawContours(debugViz, cv.VecVecPoint.fromVecPoint(approx), -1, cv.Scalar(0, 255, 0, 0), thickness: 2);
+        }
+      }
+    }
+
+    // Suppression des cases imbriquées
+    validCells.removeWhere((a) {
+      return validCells.any((b) {
+        if (identical(a, b)) return false;
+
+        return a.x >= b.x - 2 &&
+              a.y >= b.y - 2 &&
+              (a.x + a.width)  <= (b.x + b.width)  + 2 &&
+              (a.y + a.height) <= (b.y + b.height) + 2 &&
+              (a.width * a.height) < (b.width * b.height);
+      });
+    });
+
+
+    // Suppression des outliers qui se rencontrent parfois sur les bords du plateau    
+    List<int> widths = validCells.map((c) => c.width).toList()..sort();
+    int medianWidth = widths[widths.length ~/ 2];
+    double gapThreshold = medianWidth * 0.1;
+    
+    _filterEdgeOutliers(validCells, medianWidth, gapThreshold, 'left');
+    _filterEdgeOutliers(validCells, medianWidth, gapThreshold, 'right');
+    _filterEdgeOutliers(validCells, medianWidth, gapThreshold, 'top');
+    _filterEdgeOutliers(validCells, medianWidth, gapThreshold, 'bottom');
+
+    if (validCells.length < 10) {
+      throw Exception('Trop peu de cases détectées (${validCells.length}). Rapprochez-vous.');
+    }
+
+    // 1. Récupération de tous les coins de toutes les cases détectées
+    List<cv.Point> allPoints = [];
+    for (var rect in validCells) {
+      allPoints.add(cv.Point(rect.x, rect.y));
+      allPoints.add(cv.Point(rect.x + rect.width, rect.y));
+      allPoints.add(cv.Point(rect.x, rect.y + rect.height));
+      allPoints.add(cv.Point(rect.x + rect.width, rect.y + rect.height));
+    }
+
+    // 2. Calcul de l'enveloppe convexe de l'ensemble des cases
+    final hullVec = cv.VecPoint.fromMat(cv.convexHull(cv.VecPoint.fromList(allPoints)));
+    final hullVertices = hullVec.toList();
+
+    // 3. On garde les points proches des segments de l'enveloppe convexes. Cela permet de récupérer tous les points le long des bords, pas seulement les sommets.
+    double tolerance = (edges.cols / 15) * 0.3;
+
+    List<cv.Point> candidates = allPoints.where((p) {
+      for (int i = 0; i < hullVertices.length; i++) {
+        var p1 = hullVertices[i];
+        var p2 = hullVertices[(i + 1) % hullVertices.length];
+        if (_distPointToSegment(p, p1, p2) < tolerance) return true;
+      }
+      return false;
+    }).toList();
+  
+
+    // 4. Filtre des points par clustering pour exclure ceux des lignes intérieures
+    double margin = (edges.cols / 15) * 1.5; 
+
+    int minY = candidates.map((p) => p.y).reduce(min);
+    List<cv.Point> topP = candidates.where((p) => p.y < minY + margin).toList(); // les points proches du Y min
+
+    int maxY = candidates.map((p) => p.y).reduce(max);
+    List<cv.Point> bottomP = candidates.where((p) => p.y > maxY - margin).toList(); // les points proches du Y max
+
+    int minX = candidates.map((p) => p.x).reduce(min);
+    List<cv.Point> leftP = candidates.where((p) => p.x < minX + margin).toList(); // les points proches du X minimum 
+
+    int maxX = candidates.map((p) => p.x).reduce(max);
+    List<cv.Point> rightP = candidates.where((p) => p.x > maxX - margin).toList(); // les points proches du X maximum
+
+    // Dessin des points pour le debug
+    final Map<cv.Point, int> pointUsage = {};
+    void countPoint(List<cv.Point> list) {
+      for (var p in list) {
+        pointUsage[p] = (pointUsage[p] ?? 0) + 1;
+      }
+    }
+
+    countPoint(topP);
+    countPoint(bottomP);
+    countPoint(leftP);
+    countPoint(rightP);
+
+    for (var entry in pointUsage.entries) {
+      final p = entry.key;
+      final count = entry.value;
+      
+      if (count > 1) {
+        cv.circle(debugViz, p, 5, cv.Scalar(255, 255, 255, 0), thickness: -1); // Blanc (point appartenant à deux bords)
+      } else {
+        if (topP.contains(p)) cv.circle(debugViz, p, 4, cv.Scalar(0, 0, 255, 0), thickness: -1); // Rouge
+        if (bottomP.contains(p)) cv.circle(debugViz, p, 4, cv.Scalar(0, 255, 255, 0), thickness: -1); // Jaune
+        if (leftP.contains(p)) cv.circle(debugViz, p, 4, cv.Scalar(255, 0, 0, 0), thickness: -1); // Bleu
+        if (rightP.contains(p)) cv.circle(debugViz, p, 4, cv.Scalar(255, 0, 255, 0), thickness: -1); // Violet
+      }
+    }
+
+    // 5. Régression linéaire
+    final topLine = _fitLineRansac(topP, isVertical: false);
+    final bottomLine = _fitLineRansac(bottomP, isVertical: false);
+    final leftLine = _fitLineRansac(leftP, isVertical: true);
+    final rightLine = _fitLineRansac(rightP, isVertical: true);
+
+    _drawLine(debugViz, topLine, cv.Scalar(0, 0, 255, 0));    // Rouge
+    _drawLine(debugViz, bottomLine, cv.Scalar(0, 255, 255, 0)); // Jaune
+    _drawLine(debugViz, leftLine, cv.Scalar(255, 0, 0, 0));   // Bleu
+    _drawLine(debugViz, rightLine, cv.Scalar(255, 0, 255, 0)); // Violet
+
+    // 6. Intersections pour les coins finaux
+    final topLeft = _getLineIntersection(leftLine, topLine);
+    final topRight = _getLineIntersection(rightLine, topLine);
+    final bottomRight = _getLineIntersection(rightLine, bottomLine);
+    final bottomLeft = _getLineIntersection(leftLine, bottomLine);
+
+    if (topLeft == null || topRight == null || bottomRight == null || bottomLeft == null) {
+      throw Exception('Échec de l\'intersection des bords');
+    }
+
     return [topLeft, topRight, bottomRight, bottomLeft];
   }
 
-  /// Redresse le plateau en utilisant une transformation perspective
-  cv.Mat _warpBoard(cv.Mat img, List<cv.Point> corners) {
-
-    final srcPoints = cv.VecPoint.fromList(corners);
-    _size = max(max(img.cols, img.rows), 600); // Taille minimale pour OCR fiable
-print(_size) ;
-    final dstPoints = cv.VecPoint.fromList([
-      cv.Point(0, 0),        // top-left
-      cv.Point(_size, 0),     // top-right
-      cv.Point(_size, _size),  // bottom-right
-      cv.Point(0, _size),     // bottom-left
+  static cv.Mat _warpPerspective(cv.Mat img, List<cv.Point> corners) {
+    final src = cv.VecPoint.fromList(corners);
+    final dst = cv.VecPoint.fromList([
+      cv.Point(0, 0), cv.Point(_targetSize, 0),
+      cv.Point(_targetSize, _targetSize), cv.Point(0, _targetSize)
     ]);
+    final m = cv.getPerspectiveTransform(src, dst);
+    return cv.warpPerspective(img, m, (_targetSize, _targetSize));
+  }
+
+  static void _filterEdgeOutliers(
+    List<cv.Rect> cells, int medianWidth, double gapThreshold, String edge, {int searchLimit = 10}) {
+    if (cells.isEmpty) return;
     
-    try {
-      final transform = cv.getPerspectiveTransform(srcPoints, dstPoints);
-      final warped = cv.warpPerspective(img, transform, (_size, _size));
+    // Tri selon le bord à traiter
+    switch (edge) {
+      case 'left':
+        cells.sort((a, b) => a.x.compareTo(b.x));
+        break;
+      case 'right':
+        cells.sort((a, b) => b.x.compareTo(a.x)); // Ordre décroissant
+        break;
+      case 'top':
+        cells.sort((a, b) => a.y.compareTo(b.y));
+        break;
+      case 'bottom':
+        cells.sort((a, b) => b.y.compareTo(a.y)); // Ordre décroissant
+        break;
+    }
+    
+    searchLimit = min(cells.length, searchLimit);
+    int cutIndex = -1;
+    
+    // Calcul de la position maximale selon le bord
+    int maxPosition = _getMaxPosition(cells[0], edge);
+    
+    for (int i = 1; i < searchLimit; i++) {
+      cv.Rect current = cells[i];
+      int gap = _calculateGap(current, maxPosition, edge);
       
-      if (warped.isEmpty) {
-        throw Exception('La transformation perspective a échoué - image vide');
+      if (gap > gapThreshold) {
+        cutIndex = i;
+        break;
       }
       
-      return warped;
-    } catch (e) {
-      rethrow;
+      maxPosition = max(maxPosition, _getMaxPosition(current, edge));
+    }
+    
+    if (cutIndex != -1) {
+      cells.removeRange(0, cutIndex);
     }
   }
 
-
-  void _releaseResources(List<cv.Mat> mats) {
-    for (final mat in mats) {
-      if (!mat.isEmpty) mat.release();
+  static int _getMaxPosition(cv.Rect rect, String edge) {
+    switch (edge) {
+      case 'left':
+        return rect.x + rect.width;
+      case 'right':
+        return -rect.x; // Négatif pour cohérence avec l'ordre décroissant
+      case 'top':
+        return rect.y + rect.height;
+      case 'bottom':
+        return -rect.y; // Négatif pour cohérence avec l'ordre décroissant
+      default:
+        return 0;
     }
   }
-  
 
-
-
-// Nouvelle méthode pour détecter les coins du plateau à partir des cases
-List<cv.Point> _getBoardCornersFromCells(cv.Mat warpedThresh, cv.Mat debugImage, List<(cv.Mat, String)> debugSteps) {
-  final contours = cv.findContours(warpedThresh, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE).$1;
-  
-  if (contours.isEmpty) throw Exception('Aucun contour détecté');
-  
-  print('Nombre total de contours détectés : ${contours.length}');
-  
-  // DEBUG: Dessiner TOUS les contours
-  final allContoursDebug = debugImage.clone();
-  for (int i = 0; i < contours.length; i++) {
-    cv.drawContours(allContoursDebug, cv.VecVecPoint.fromVecPoint(contours[i]), 0, 
-                   cv.Scalar(255, 0, 0, 0), thickness: 1);
-  }
-  debugSteps.add((allContoursDebug.clone(), 'DEBUG: Tous les contours (${contours.length})'));
-  
-  // 1. Détecter toutes les cases potentielles (quadrilatères)
-  List<cv.Rect> validCells = [];
-  List<List<cv.Point>> validCellCorners = [];
-  
-  final imageArea = warpedThresh.cols * warpedThresh.rows;
-  final minCellArea = imageArea / 500; // ~1/500 de l'image pour une case (plus permissif)
-  final maxCellArea = imageArea / 80;  // ~1/80 de l'image pour une case (plus permissif)
-  
-  print('Image: ${warpedThresh.cols}x${warpedThresh.rows}, aire: $imageArea');
-  print('Aire min/max pour cases: $minCellArea / $maxCellArea');
-  
-  // DEBUG: Contours filtrés par aire
-  final areaFilteredDebug = debugImage.clone();
-  int areaFilteredCount = 0;
-  
-  for (final contour in contours) {
-    final area = cv.contourArea(contour);
-    
-    if (area >= minCellArea && area <= maxCellArea) {
-      cv.drawContours(areaFilteredDebug, cv.VecVecPoint.fromVecPoint(contour), -1, 
-                     cv.Scalar(0, 255, 255, 0), thickness: 2);
-      areaFilteredCount++;
+  static int _calculateGap(cv.Rect current, int maxPosition, String edge) {
+    switch (edge) {
+      case 'left':
+        return current.x - maxPosition;
+      case 'right':
+        return (-current.x - current.width) - maxPosition;
+      case 'top':
+        return current.y - maxPosition;
+      case 'bottom':
+        return (-current.y - current.height) - maxPosition;
+      default:
+        return 0;
     }
   }
-  debugSteps.add((areaFilteredDebug.clone(), 'DEBUG: Contours filtrés par aire ($areaFilteredCount)'));
-  print('Contours après filtre d\'aire: $areaFilteredCount');
-  
-  // DEBUG: Quadrilatères détectés avec différents epsilons
-  final quadDebug = debugImage.clone();
-  int quadCount = 0;
-  
-  for (final contour in contours) {
-    final area = cv.contourArea(contour);
-    if (area < minCellArea || area > maxCellArea) continue;
+
+  static (cv.Point, cv.Point) _fitLineRansac(List<cv.Point> points, {
+    required bool isVertical, 
+    double threshold = 4.0,
+    int iterations = 100
+  }) {
+    if (points.length < 2) return (cv.Point(0, 0), cv.Point(0, 0));
+
+    Random rng = Random();
+    List<cv.Point> bestInliers = [];
     
-    final rect = cv.boundingRect(contour);
-    final aspectRatio = rect.width / rect.height;
-    
-    // Vérifier que c'est approximativement carré d'abord
-    if (aspectRatio < 0.5 || aspectRatio > 1.5) continue;
-    
-    // Essayer avec un epsilon plus grand pour simplifier davantage
-    final epsilon = cv.arcLength(contour, true) * 0.05; // Plus grand (0.05 au lieu de 0.02)
-    final approx = cv.approxPolyDP(contour, epsilon, true);
-    
-    // Accepter les quadrilatères ET les contours qui s'en rapprochent
-    if (approx.length >= 4 && approx.length <= 8) {
-      cv.drawContours(quadDebug, cv.VecVecPoint.fromVecPoint(approx), -1, 
-                     cv.Scalar(255, 255, 0, 0), thickness: 2);
-      quadCount++;
-      
-      // Si c'est assez carré, on le garde
-      if (aspectRatio > 0.6 && aspectRatio < 1.4) {
-        validCells.add(rect);
-        validCellCorners.add(approx.toList());
-        
-        // Debug: dessiner les cases valides en vert
-        cv.drawContours(debugImage, cv.VecVecPoint.fromVecPoint(approx), -1, 
-                       cv.Scalar(0, 255, 0, 0), thickness: 2);
+    for (int i = 0; i < iterations; i++) {
+      // 1. Sélectionner 2 points au hasard pour créer un modèle candidat
+      var p1 = points[rng.nextInt(points.length)];
+      var p2 = points[rng.nextInt(points.length)];
+      if (p1 == p2) continue;
+
+      // 2. Compter combien de points "adhèrent" à cette ligne
+      List<cv.Point> currentInliers = [];
+      for (var p in points) {
+        if (_distPointToLine(p, p1, p2) < threshold) {
+          currentInliers.add(p);
+        }
+      }
+
+      // 3. Si on a trouvé un meilleur modèle, on le garde
+      if (currentInliers.length > bestInliers.length) {
+        bestInliers = currentInliers;
       }
     }
-  }
-  debugSteps.add((quadDebug.clone(), 'DEBUG: Quadrilatères détectés ($quadCount)'));
-  print('Quadrilatères détectés: $quadCount');
-  
-  debugSteps.add((debugImage.clone(), 'DEBUG: Cases valides carrées (${validCells.length})'));
-  print('Cases valides finales: ${validCells.length}');
-  
-  // Ne pas lancer d'exception ici pour pouvoir voir le debug
-  // On retournera une liste vide et gérera l'erreur plus tard
-  if (validCells.length < 10) {
-    print('ATTENTION: Seulement ${validCells.length} cases détectées (minimum recommandé: 10)');
-    // Retourner des coins par défaut pour ne pas bloquer le debug
-    return [
-      cv.Point(0, 0),
-      cv.Point(warpedThresh.cols, 0),
-      cv.Point(warpedThresh.cols, warpedThresh.rows),
-      cv.Point(0, warpedThresh.rows),
-    ];
-  }
-  
-  // 2. Trouver les cases extrêmes
-  if (validCells.length < 10) {
-    // Pas assez de cases pour faire l'extrapolation, on s'arrête ici
-    return [
-      cv.Point(0, 0),
-      cv.Point(debugImage.cols, 0),
-      cv.Point(debugImage.cols, debugImage.rows),
-      cv.Point(0, debugImage.rows),
-    ];
-  }
-  
-  final sortedByX = List<cv.Rect>.from(validCells)..sort((a, b) => a.x.compareTo(b.x));
-  final sortedByY = List<cv.Rect>.from(validCells)..sort((a, b) => a.y.compareTo(b.y));
-  
-  final leftmostCells = sortedByX.take(3).toList();
-  final rightmostCells = sortedByX.reversed.take(3).toList();
-  final topmostCells = sortedByY.take(3).toList();
-  final bottommostCells = sortedByY.reversed.take(3).toList();
-  
-  // 3. Extraire les lignes des bords à partir des cases extrêmes
-  final leftLine = _fitLineFromCells(leftmostCells, isVertical: true);
-  final rightLine = _fitLineFromCells(rightmostCells, isVertical: true);
-  final topLine = _fitLineFromCells(topmostCells, isVertical: false);
-  final bottomLine = _fitLineFromCells(bottommostCells, isVertical: false);
-  
-  // Debug: dessiner les lignes extrapolées
-  _drawLine(debugImage, leftLine, cv.Scalar(255, 0, 0, 0));
-  _drawLine(debugImage, rightLine, cv.Scalar(255, 0, 0, 0));
-  _drawLine(debugImage, topLine, cv.Scalar(0, 0, 255, 0));
-  _drawLine(debugImage, bottomLine, cv.Scalar(0, 0, 255, 0));
-  
-  // 4. Calculer les intersections pour obtenir les coins
-  final topLeft = _getLineIntersection(leftLine, topLine);
-  final topRight = _getLineIntersection(rightLine, topLine);
-  final bottomRight = _getLineIntersection(rightLine, bottomLine);
-  final bottomLeft = _getLineIntersection(leftLine, bottomLine);
-  
-  if (topLeft == null || topRight == null || bottomRight == null || bottomLeft == null) {
-    throw Exception('Impossible de calculer les intersections des lignes');
-  }
-  
-  // Debug: marquer les coins calculés
-  cv.circle(debugImage, topLeft, 8, cv.Scalar(0, 255, 255, 0), thickness: -1);
-  cv.circle(debugImage, topRight, 8, cv.Scalar(0, 255, 255, 0), thickness: -1);
-  cv.circle(debugImage, bottomRight, 8, cv.Scalar(0, 255, 255, 0), thickness: -1);
-  cv.circle(debugImage, bottomLeft, 8, cv.Scalar(0, 255, 255, 0), thickness: -1);
-  
-  return [topLeft, topRight, bottomRight, bottomLeft];
-}
 
-// Ajuster une ligne à partir des centres des cases
-(cv.Point, cv.Point) _fitLineFromCells(List<cv.Rect> cells, {required bool isVertical}) {
-  final points = cells.map((rect) => cv.Point(
-    rect.x + rect.width ~/ 2,
-    rect.y + rect.height ~/ 2,
-  )).toList();
+    // 4. On refait la régression finale uniquement sur les meilleurs points trouvés
+    return _fitLine(bestInliers.isNotEmpty ? bestInliers : points, isVertical: isVertical);
+  }
   
-  if (points.length < 2) throw Exception('Pas assez de points pour ajuster une ligne');
-  
-  // Régression linéaire simple
-  final n = points.length;
-  final sumX = points.fold(0.0, (sum, p) => sum + p.x);
-  final sumY = points.fold(0.0, (sum, p) => sum + p.y);
-  final sumXY = points.fold(0.0, (sum, p) => sum + p.x * p.y);
-  final sumX2 = points.fold(0.0, (sum, p) => sum + p.x * p.x);
-  final sumY2 = points.fold(0.0, (sum, p) => sum + p.y * p.y);
-  
-  final meanX = sumX / n;
-  final meanY = sumY / n;
-  
-  if (isVertical) {
-    // Pour une ligne verticale, on utilise X = a*Y + b
-    final slope = (sumXY - n * meanX * meanY) / (sumY2 - n * meanY * meanY);
-    final intercept = meanX - slope * meanY;
+  // Helpers utilitaires
+  static double _countNonZeroRatio(cv.Mat m) => cv.countNonZero(m) / (m.rows * m.cols);
+  static cv.Mat _createWhiteMat(int r, int c) => cv.Mat.fromScalar(r, c, cv.MatType.CV_8UC1, cv.Scalar.all(255));
+  static bool _rectHasIntersection(cv.Rect a, cv.Rect b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+  }
+  static double _distPointToLine(cv.Point p, cv.Point a, cv.Point b) {
+    final double numerator = ((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)).abs().toDouble();
+    final double denominator = sqrt(pow(b.x - a.x, 2) + pow(b.y - a.y, 2));
+    return denominator == 0 ? 0 : numerator / denominator;
+  }
+  static double _distPointToSegment(cv.Point p, cv.Point a, cv.Point b) {
+    final double dx = (b.x - a.x).toDouble();
+    final double dy = (b.y - a.y).toDouble();
+    final double l2 = dx * dx + dy * dy;
     
-    // Étendre la ligne sur toute la hauteur de l'image
-    final y1 = 0;
-    final y2 = 1000; // Suffisamment grand
-    final x1 = (slope * y1 + intercept).round();
-    final x2 = (slope * y2 + intercept).round();
+    if (l2 == 0) return sqrt(pow(p.x - a.x, 2) + pow(p.y - a.y, 2));
     
-    return (cv.Point(x1, y1), cv.Point(x2, y2));
-  } else {
-    // Pour une ligne horizontale, on utilise Y = a*X + b
-    final slope = (sumXY - n * meanX * meanY) / (sumX2 - n * meanX * meanX);
-    final intercept = meanY - slope * meanX;
+    // t est la projection du point sur la droite, bridée entre 0 et 1
+    double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
+    t = t.clamp(0.0, 1.0);
     
-    // Étendre la ligne sur toute la largeur de l'image
-    final x1 = 0;
-    final x2 = 1000; // Suffisamment grand
-    final y1 = (slope * x1 + intercept).round();
-    final y2 = (slope * x2 + intercept).round();
-    
-    return (cv.Point(x1, y1), cv.Point(x2, y2));
+    return sqrt(pow(p.x - (a.x + t * dx), 2) + pow(p.y - (a.y + t * dy), 2));
+  }
+  static (cv.Point, cv.Point) _fitLine(List<cv.Point> points, {required bool isVertical}) { // Régression linéaire simple
+    int n = points.length;
+    double sumX = 0, sumY = 0;
+    for (var p in points) { sumX += p.x; sumY += p.y; }
+    double meanX = sumX / n;
+    double meanY = sumY / n;
+
+    double sxx = 0, sxy = 0, syy = 0;
+    for (var p in points) {
+      sxx += (p.x - meanX) * (p.x - meanX);
+      sxy += (p.x - meanX) * (p.y - meanY);
+      syy += (p.y - meanY) * (p.y - meanY);
+    }
+
+    // Angle de la ligne (PCA / Total Least Squares)
+    double angle = 0.5 * atan2(2 * sxy, sxx - syy);
+    double vx = cos(angle);
+    double vy = sin(angle);
+
+    // Projection directe vers les coordonnées extrêmes (-2000, 4000)
+    if (isVertical) {
+      // x = meanX + (vx/vy) * (y - meanY)
+      if (vy.abs() < 1e-6) return (cv.Point(meanX.round(), -2000), cv.Point(meanX.round(), 4000));
+      double slope = vx / vy;
+      int x1 = (meanX + slope * (-2000 - meanY)).round();
+      int x2 = (meanX + slope * (4000 - meanY)).round();
+      return (cv.Point(x1, -2000), cv.Point(x2, 4000));
+    } else {
+      // y = meanY + (vy/vx) * (x - meanX)
+      if (vx.abs() < 1e-6) return (cv.Point(-2000, meanY.round()), cv.Point(4000, meanY.round()));
+      double slope = vy / vx;
+      int y1 = (meanY + slope * (-2000 - meanX)).round();
+      int y2 = (meanY + slope * (4000 - meanX)).round();
+      return (cv.Point(-2000, y1), cv.Point(4000, y2));
+    }
+  }
+  static cv.Point? _getLineIntersection((cv.Point, cv.Point) l1, (cv.Point, cv.Point) l2) {
+    final d = (l1.$1.x - l1.$2.x) * (l2.$1.y - l2.$2.y) - (l1.$1.y - l1.$2.y) * (l2.$1.x - l2.$2.x);
+    if (d == 0) return null;
+    final x = ((l1.$1.x * l1.$2.y - l1.$1.y * l1.$2.x) * (l2.$1.x - l2.$2.x) - (l1.$1.x - l1.$2.x) * (l2.$1.x * l2.$2.y - l2.$1.y * l2.$2.x)) / d;
+    final y = ((l1.$1.x * l1.$2.y - l1.$1.y * l1.$2.x) * (l2.$1.y - l2.$2.y) - (l1.$1.y - l1.$2.y) * (l2.$1.x * l2.$2.y - l2.$1.y * l2.$2.x)) / d;
+    return cv.Point(x.round(), y.round());
+  }
+  static void _drawLine(cv.Mat img, (cv.Point, cv.Point) line, cv.Scalar color) {
+    cv.line(img, line.$1, line.$2, color, thickness: 3);
   }
 }
 
-// Calculer l'intersection de deux lignes
-cv.Point? _getLineIntersection((cv.Point, cv.Point) line1, (cv.Point, cv.Point) line2) {
-  final (p1, p2) = line1;
-  final (p3, p4) = line2;
-  
-  final denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
-  
-  if (denom.abs() < 1e-10) return null; // Lignes parallèles
-  
-  final t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / denom;
-  
-  final intersectionX = p1.x + t * (p2.x - p1.x);
-  final intersectionY = p1.y + t * (p2.y - p1.y);
-  
-  return cv.Point(intersectionX.round(), intersectionY.round());
+// =============================================================================
+// 3. UI WIDGETS (Debug & Preview)
+// =============================================================================
+
+class _ProcessingDialog extends StatelessWidget {
+  const _ProcessingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Dialog(
+      child: Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Expanded(child: Text("Analyse du plateau...")),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-// Dessiner une ligne sur l'image de debug
-void _drawLine(cv.Mat image, (cv.Point, cv.Point) line, cv.Scalar color) {
-  final (p1, p2) = line;
-  
-  // Clipper la ligne aux dimensions de l'image
-  final clippedP1 = cv.Point(
-    p1.x.clamp(0, image.cols - 1),
-    p1.y.clamp(0, image.rows - 1),
-  );
-  final clippedP2 = cv.Point(
-    p2.x.clamp(0, image.cols - 1),
-    p2.y.clamp(0, image.rows - 1),
-  );
-  
-  cv.line(image, clippedP1, clippedP2, color, thickness: 3);
-}
-}
-
-
-
-// Classes d'interface utilisateur inchangées
 class DebugStepsScreen extends StatelessWidget {
   final List<(cv.Mat, String)> debugSteps;
-  final VoidCallback onComplete;
+  final String? errorMessage;
+  final VoidCallback? onComplete;
 
   const DebugStepsScreen({
-    super.key,
-    required this.debugSteps,
-    required this.onComplete,
+    super.key, 
+    required this.debugSteps, 
+    this.errorMessage, 
+    this.onComplete
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Étapes de détection'),
-        backgroundColor: Colors.brown[300],
+        title: const Text('Étapes Vision'),
+        backgroundColor: Colors.red[100],
         actions: [
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: onComplete,
-            tooltip: 'Passer aux cellules extraites',
-          ),
+          if (onComplete != null)
+            IconButton(icon: const Icon(Icons.forward), onPressed: onComplete),
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(8.0),
-        itemCount: debugSteps.length,
-        itemBuilder: (context, index) {
-  final (mat, description) = debugSteps[index];
-  final (_, encoded) = cv.imencode('.png', mat);
-  return Card(
-    key: ValueKey(index), // Ajout de la clé unique ici
-    margin: const EdgeInsets.symmetric(vertical: 8.0),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Image.memory(
-          encoded,
-          fit: BoxFit.cover,
-          width: double.infinity,
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Text(
-            description,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      body: Column(
+        children: [
+          if (errorMessage != null)
+            Container(
+              color: Colors.red,
+              padding: const EdgeInsets.all(8),
+              width: double.infinity,
+              child: Text(errorMessage!, style: const TextStyle(color: Colors.white)),
+            ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: debugSteps.length,
+              itemBuilder: (context, i) {
+                final (mat, desc) = debugSteps[i];
+                final (_, encoded) = cv.imencode('.png', mat);
+                return Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text(desc, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Image.memory(encoded),
+                  const Divider(),
+                ]);
+              },
+            ),
           ),
-        ),
-      ],
-    ),
-  );
-},
+        ],
       ),
     );
   }
 }
 
-Future<String> recognizeLetter(File cellImage) async {
-    final inputImage = InputImage.fromFilePath(cellImage.path);
-    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-    textRecognizer.close();
-    
-    // Pour une case Scrabble : prend le premier bloc, premier texte
-    if (recognizedText.blocks.isNotEmpty) {
-      final text = recognizedText.blocks.first.text.trim().toUpperCase();
-      final cleanText = text.replaceAll(RegExp(r'[^A-Z]'), '');
-      return cleanText.isNotEmpty ? cleanText[0] : '?';
-    }
-    return '?'; // Fallback pour vide ou erreur
-}
 class ExtractedCellsPreview extends StatefulWidget {
   final List<File> cellImages;
   final BoardState boardState;
@@ -647,459 +837,216 @@ class ExtractedCellsPreview extends StatefulWidget {
   });
 
   @override
-  _ExtractedCellsPreviewState createState() => _ExtractedCellsPreviewState();
+  State<ExtractedCellsPreview> createState() => _ExtractedCellsPreviewState();
 }
 
 class _ExtractedCellsPreviewState extends State<ExtractedCellsPreview> {
-  late Future<List<String>> _letterFutures;
-  bool _showImages = true;
+  final OcrService _ocrService = OcrService();
+  List<String> _recognizedLetters = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _letterFutures = _recognizeAllLetters();
+    _runOcrAnalysis();
   }
 
-  Future<List<String>> _recognizeAllLetters() async {
-    List<String> letters = [];
-    for (final image in widget.cellImages) {
-      final letter = await recognizeLetter(image);
-      letters.add(letter);
+  Future<void> _runOcrAnalysis() async {
+    final results = await _ocrService.recognizeBatch(widget.cellImages);
+    if (mounted) {
+      setState(() {
+        _recognizedLetters = results;
+        _isLoading = false;
+      });
+      // Rafraîchir le cache des images
+      _evictCachedImages();
     }
-    return letters;
   }
 
-  Color _getCellBackgroundColor(int row, int col, String letter) {
-    // Couleurs pour les cases spéciales (adaptez selon votre logique)
-    if (letter.isEmpty || letter == '?') {
-      return Colors.grey[100]!;
+  Future<void> _evictCachedImages() async {
+    for (final file in widget.cellImages) {
+      await FileImage(file).evict();
     }
-    return Colors.brown[50]!;
   }
 
-  Color _getLetterColor(String letter) {
-    if (letter.isEmpty || letter == '?') {
-      return Colors.grey[400]!;
+  Future<void> _exportImages() async {
+    final archive = Archive();
+    for (int i = 0; i < widget.cellImages.length; i++) {
+      final file = widget.cellImages[i];
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        final row = i ~/ 15;
+        final col = i % 15;
+        final filename = 'cell_${row.toString().padLeft(2, '0')}_${col.toString().padLeft(2, '0')}.png';
+        archive.addFile(ArchiveFile(filename, bytes.length, bytes));
+      }
     }
-    return Colors.brown[800]!;
+
+    final zipEncoder = ZipEncoder();
+    final encodedArchive = zipEncoder.encode(archive);
+    
+    final tempDir = await getTemporaryDirectory();
+    final zipFile = File('${tempDir.path}/scrabble_debug_dataset.zip');
+    await zipFile.writeAsBytes(encodedArchive);
+
+    if (!mounted) return;
+    final box = context.findRenderObject() as RenderBox?;
+    await Share.shareXFiles(
+      [XFile(zipFile.path)],
+      text: 'Dataset debug Scrabble',
+      sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
+    );
+  }
+
+  void _applyRecognizedLettersToBoard(List<String> letters) {
+    widget.boardState.letters = List.generate(15, (_) => List.filled(15, null));
+    widget.boardState.blanks = [];
+    
+    for (int i = 0; i < letters.length; i++) {
+      if (i >= 225) break;
+      final letter = letters[i];
+      if (letter.isNotEmpty && letter != '?') {
+        final row = i ~/ 15;
+        final col = i % 15;
+        widget.boardState.writeLetter(letter.toLowerCase(), Position(row, col));
+      }
+    }
+    widget.boardState.updatePossibleLetters();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Détection OCR - Plateau'),
+        title: const Text('Validation'),
         backgroundColor: Colors.brown[300],
         actions: [
           IconButton(
-            icon: Icon(_showImages ? Icons.text_fields : Icons.image),
-            onPressed: () {
-              setState(() {
-                _showImages = !_showImages;
-              });
-            },
-            tooltip: _showImages ? 'Afficher lettres uniquement' : 'Afficher images',
+            icon: const Icon(Icons.download),
+            tooltip: 'Exporter les images',
+            onPressed: _exportImages,
           ),
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Valider le plateau',
+            onPressed: !_isLoading ? () {
+              _applyRecognizedLettersToBoard(_recognizedLetters);
+              Navigator.popUntil(context, (route) => route.isFirst);
+            } : null,
+          )
         ],
       ),
-      body: Column(
-        children: [
-          // Indicateur de progression et statistiques
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            color: Colors.brown[100],
-            child: FutureBuilder<List<String>>(
-              future: _letterFutures,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Row(
-                    children: [
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      SizedBox(width: 12),
-                      Text('Reconnaissance en cours...'),
-                    ],
-                  );
-                } else if (snapshot.hasData) {
-                  final letters = snapshot.data!;
-                  final detectedCount = letters.where((l) => l.isNotEmpty && l != '?').length;
-                  final totalCount = widget.cellImages.length;
-                  
-                  return Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green[600], size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Lettres détectées : $detectedCount/$totalCount',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Taux : ${(detectedCount / totalCount * 100).toStringAsFixed(1)}%',
-                        style: TextStyle(
-                          color: Colors.brown[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return const SizedBox.shrink();
-              },
+      body: _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : GridView.builder(
+            padding: const EdgeInsets.all(2),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 15,
+              crossAxisSpacing: 1,
+              mainAxisSpacing: 1,
+              childAspectRatio: 1.0, // Carré pour ne pas déformer
             ),
-          ),
-          
-          // Grille du plateau
-          Expanded(
-            child: FutureBuilder<List<String>>(
-              future: _letterFutures,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text(
-                          'Analyse des lettres en cours...',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  );
-                } else if (snapshot.hasError) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error, size: 48, color: Colors.red[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Erreur lors de la reconnaissance',
-                          style: TextStyle(fontSize: 18, color: Colors.red[700]),
-                        ),
-                        const SizedBox(height: 8),
-                        Text('${snapshot.error}'),
-                      ],
-                    ),
-                  );
-                } else if (!snapshot.hasData) {
-                  return const Center(
-                    child: Text(
-                      'Aucune donnée disponible',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  );
-                }
+            itemCount: 225, 
+            itemBuilder: (context, index) {
+              if (index >= widget.cellImages.length) {
+                 return Container(color: Colors.grey[200]);
+              }
 
-                final letters = snapshot.data!;
-                return Container(
-                  padding: const EdgeInsets.all(8.0),
-                  child: AspectRatio(
-                    aspectRatio: 1.0, // Garde le plateau carré
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 15,
-                        childAspectRatio: 1.0,
-                        crossAxisSpacing: 1.0,
-                        mainAxisSpacing: 1.0,
+              final file = widget.cellImages[index];
+              final rawLetter = (index < _recognizedLetters.length) ? _recognizedLetters[index] : '';
+              final letter = rawLetter.trim().toUpperCase();
+              final isDetected = letter.isNotEmpty && letter != '?';
+              
+              return GestureDetector(
+                onTap: () => _showCellDetail(context, file, rawLetter, index),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.brown[200]!, width: 0.5),
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Image en fond complet
+                      Image.file(
+                        file, 
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 10),
                       ),
-                      itemCount: 225,
-                      itemBuilder: (context, index) {
-                        final row = index ~/ 15;
-                        final col = index % 15;
-                        final imageIndex = row * 15 + col;
-
-                        if (imageIndex < widget.cellImages.length) {
-                          final letter = imageIndex < letters.length ? letters[imageIndex] : '?';
-                          
-                          return GestureDetector(
-                            onTap: () {
-                              // Afficher un dialogue avec l'image agrandie et la lettre détectée
-                              _showCellDetail(context, imageIndex, letter);
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: _getCellBackgroundColor(row, col, letter),
-                                border: Border.all(
-                                  color: Colors.brown[300]!,
-                                  width: 0.5,
-                                ),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                              child: _showImages ? _buildImageCell(imageIndex, letter) : _buildLetterCell(letter),
-                            ),
-                          );
-                        } else {
-                          return Container(
+                      
+                      // Lettre en overlay discret (coin bas-droit, fond semi-transparent marron)
+                      if (isDetected)
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              border: Border.all(
-                                color: Colors.grey[300]!,
-                                width: 0.5,
-                              ),
-                              borderRadius: BorderRadius.circular(2),
+                              color: Colors.blueGrey[500]!.withOpacity(0.75),
+                              borderRadius: BorderRadius.circular(3),
                             ),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          
-          // Légende
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildLegendItem(Colors.brown[50]!, 'Lettre détectée'),
-                const SizedBox(width: 16),
-                _buildLegendItem(Colors.grey[100]!, 'Non détectée'),
-              ],
-            ),
-          ),
-          
-          // Boutons d'action
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: Colors.brown[50],
-              border: Border(top: BorderSide(color: Colors.brown[200]!)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: Colors.brown[300]!),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Réajuster'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.brown[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      elevation: 2,
-                    ),
-                    onPressed: () async {
-                      final letters = await _letterFutures;
-                      _applyRecognizedLettersToBoard(letters);
-                      Navigator.popUntil(
-                        context,
-                        (route) => route.isFirst,
-                      );
-                    },
-                    icon: const Icon(Icons.check),
-                    label: const Text('Valider les lettres'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildImageCell(int imageIndex, String letter) {
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(1),
-          child: Image.file(
-            widget.cellImages[imageIndex],
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-          ),
-        ),
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.black.withOpacity(0.7),
-                ],
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 2.0),
-            child: Text(
-              letter.isEmpty ? '?' : letter,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                shadows: [
-                  Shadow(
-                    offset: Offset(0, 1),
-                    blurRadius: 2,
-                    color: Colors.black,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLetterCell(String letter) {
-    return Center(
-      child: Text(
-        letter.isEmpty ? '?' : letter.toUpperCase(),
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          color: _getLetterColor(letter),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            border: Border.all(color: Colors.brown[300]!),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12),
-        ),
-      ],
-    );
-  }
-
-  void _showCellDetail(BuildContext context, int imageIndex, String letter) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Case ${imageIndex + 1}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.brown[300]!),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(7),
-                    child: Image.file(
-                      widget.cellImages[imageIndex],
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.brown[50],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Lettre détectée :',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        letter.isEmpty ? '?' : letter.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.brown[800],
+                            child: Text(
+                              letter,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9, 
+                                fontWeight: FontWeight.bold,
+                                height: 1.0,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Fermer'),
-                ),
-              ],
-            ),
+              );
+            },
           ),
-        );
-      },
     );
   }
-  
-  // board_scanner.dart
 
-void _applyRecognizedLettersToBoard(List<String> letters) {
-  // Clear the board's state before applying new letters.
-  widget.boardState.letters = List.generate(BoardState.boardSize, (_) => List.filled(BoardState.boardSize, null));
-  widget.boardState.blanks = [];
-  widget.boardState.tempLetters = [];
+  void _showCellDetail(BuildContext context, File file, String letter, int index) {
+      final cleanLetter = letter.trim().toUpperCase();
+      final displayLetter = (cleanLetter.isNotEmpty && cleanLetter != '?') ? cleanLetter : "Aucune";
 
-  for (int i = 0; i < letters.length; i++) {
-    final row = i ~/ BoardState.boardSize;
-    final col = i % BoardState.boardSize;
-    final letter = letters[i].toUpperCase();
-
-    if (letter.isNotEmpty && letter != '?') {
-      final pos = Position(row, col);
-      widget.boardState.writeLetter(letter.toLowerCase(), pos);
-      // As the letters from the scanner are part of the permanent board state,
-      // they do not need to be marked as temporary.
-    }
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+            title: Text("Case ${index + 1}"),
+            content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                    Container(
+                      height: 150,
+                      width: 150,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.brown),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: Image.file(file, fit: BoxFit.cover)
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text("Lettre détectée :"),
+                    const SizedBox(height: 8),
+                    Text(
+                        displayLetter, 
+                        style: TextStyle(
+                          fontSize: 32, 
+                          fontWeight: FontWeight.bold, 
+                          color: displayLetter == "Aucune" ? Colors.grey : Colors.brown[800]
+                        )
+                    ),
+                ],
+            ),
+            actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx), 
+                    child: const Text("Fermer")
+                )
+            ],
+        ),
+      );
   }
-
-  // Update the possible letters for the next move
-  widget.boardState.updatePossibleLetters();
-  
-  // No need to notify here, `writeLetter` already does it.
-}
 }

@@ -95,6 +95,28 @@ class GameDialogs {
                     }
                   },
                 ),
+                const SizedBox(height: 16),
+                
+                // Section mode debug
+                Text(
+                  'Mode développeur',
+                  style: TextStyle(
+                    color: Colors.brown[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('Afficher les écrans de debug'),
+                  value: appState.debugMode,
+                  activeColor: Colors.brown[700],
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (bool value) {
+                    setState(() {
+                      appState.debugMode = value;
+                    });
+                  },
+                ),
               ],
             ),
             actions: [
@@ -110,6 +132,7 @@ class GameDialogs {
               TextButton(
                 onPressed: () {
                   context.read<AppState>().playerName = nameController.text.trim();
+                  context.read<AppState>().saveState();
                   Navigator.of(context).pop();
                 },
                 child: Text(

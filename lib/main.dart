@@ -54,6 +54,7 @@ class AppState extends ChangeNotifier {
   final List<GameSession> _sessions = [];
   int? _currentSessionIndex;
   String playerName = 'Joueur';
+  bool debugMode = false; // Option pour afficher les écrans de debug
 
   final GameSyncService _syncService = GameSyncService();
 
@@ -164,6 +165,7 @@ class AppState extends ChangeNotifier {
   await prefs.setString('searchBoard', jsonEncode(searchBoard.toJson()));
   await prefs.setString('defaultBoardType', BoardState.defaultBoardType);
   await prefs.setString('playerName', playerName);
+  await prefs.setBool('debugMode', debugMode);
 
   List<Map<String, dynamic>> sessionsData =
       _sessions.map((session) {
@@ -187,11 +189,11 @@ class AppState extends ChangeNotifier {
     }
     BoardState.defaultBoardType = prefs.getString('defaultBoardType') ?? 'scrabble';
     playerName = prefs.getString('playerName') ?? 'Joueur';
+    debugMode = prefs.getBool('debugMode') ?? false;
 
     String? sessionsJson = prefs.getString('app_sessions');
     if (sessionsJson != null) {
       List<dynamic> sessionsData = jsonDecode(sessionsJson);
-      _sessions.clear();
       for (var sessionData in sessionsData) {
         _sessions.add(GameSession.fromJson(sessionData));
       }
